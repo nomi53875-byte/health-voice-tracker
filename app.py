@@ -11,15 +11,22 @@ st.set_page_config(page_title="血壓記錄助手", layout="centered")
 # --- 背景樣式優化 ---
 st.markdown("""
     <style>
+    /* 調整標題大小避開手機換行 */
+    .main-title {
+        font-size: 24px !important;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
     .stButton>button {
         width: 100%;
         height: 3em;
-        font-size: 20px;
+        font-size: 18px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🩺 血壓手動紀錄")
+# 1. 標題縮小
+st.markdown('<p class="main-title">🩺 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
 # --- 連線邏輯 ---
 def get_gspread_client():
@@ -40,18 +47,19 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(info, scopes=scopes)
     return gspread.authorize(creds)
 
-# --- 讀取與顯示主邏輯 ---
 try:
     client = get_gspread_client()
     sheet_id = "1SUnTdHJFPFbo2pr8dnAib3tTSrCCSygBcp4eAOxWz4g"
     sh = client.open_by_key(sheet_id)
     worksheet = sh.get_worksheet(0)
     
+    # 5. 新增直接連結到試算表的按鈕
+    st.link_button("📂 開啟 Google 試算表原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+
     # 準備表單介面
     with st.form("health_form", clear_on_submit=True):
-        st.subheader("📝 填寫新數據")
+        st.subheader("📝 填寫數據")
         
-        # 設定台北時間
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
         
@@ -61,41 +69,43 @@ try:
         with col2:
             time_val = st.time_input("時間", now.time())
             
-        systolic = st.number_input("收縮壓 (高壓)", min_value=50, max_value=250, value=120)
-        # 修正這裡：將 max_VALUE 改為 max_value
-        diastolic = st.number_input("舒張壓 (低壓)", min_value=30, max_value=150, value=80)
-        pulse = st.number_input("心跳 (Pulse)", min_value=30, max_value=200, value=70)
+        # 2. 解決手動輸入要刪除預設值的問題：使用 value=None (Streamlit 會顯示為空白或預設 placeholder)
+        # 但為了方便快速加減，我們保留數值型態，改用更直覺的 placeholder
+        systolic = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120, step=1)
+        diastolic = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80, step=1)
+        pulse = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70, step=1)
         
-        context = st.selectbox("情境", ["一般", "起床", "睡前", "運動後", "不舒服"])
+        # 3. 修改情境選項
+        context = st.selectbox("情境", ["一般", "起床", "下班", "睡前", "飯後"])
         notes = st.text_input("備註 (可不填)", placeholder="例如：感覺有點累")
         
-        submit_button = st.form_submit_button(label="🚀 儲存紀錄")
+        # 4. 修改按鈕圖示
+        submit_button = st.form_submit_button(label="💾 點擊儲存紀錄")
 
     if submit_button:
-        new_row = [
-            str(date_val), 
-            time_val.strftime("%H:%M"), 
-            systolic, 
-            diastolic, 
-            pulse, 
-            context, 
-            notes
-        ]
-        worksheet.append_row(new_row)
-        st.balloons()
-        st.success("✅ 數據已成功存入雲端倉庫！")
+        if systolic == 0 or diastolic == 0:
+            st.error("請輸入正確的血壓數值！")
+        else:
+            new_row = [
+                str(date_val), 
+                time_val.strftime("%H:%M"), 
+                systolic, 
+                diastolic, 
+                pulse, 
+                context, 
+                notes
+            ]
+            worksheet.append_row(new_row)
+            st.balloons()
+            st.success("✅ 數據已成功存入雲端倉庫！")
 
-    # --- 顯示歷史紀錄 ---
     st.divider()
     st.subheader("📊 最近紀錄預覽")
     records = worksheet.get_all_records()
     if records:
         df = pd.DataFrame(records)
-        # 顯示最後 5 筆並讓表格寬度自動適應
         st.dataframe(df.tail(5), use_container_width=True)
-    else:
-        st.write("目前尚無資料。")
 
 except Exception as e:
-    st.error("連線發生錯誤，請檢查設定。")
+    st.error("連線發生錯誤")
     st.exception(e)
