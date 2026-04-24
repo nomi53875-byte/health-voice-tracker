@@ -1,5 +1,5 @@
 streamlit
 pandas
 gspread
-google-oauth2-service-account
+google-auth
 pytz
