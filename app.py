@@ -42,7 +42,7 @@ try:
     # --- 調整為上下結構 ---
     st.link_button("📂 開啟 Google 試算表原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
     # 開關放在按鈕正下方
-    manual_mode = st.toggle("⌨️ 手動輸入模式", value=False)
+    manual_mode = st.toggle("手動輸入", value=False)
 
     # 準備表單介面
     with st.form("health_form", clear_on_submit=True):
