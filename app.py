@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 
+# 設定網頁標題
 st.set_page_config(page_title="血壓記錄助手", layout="centered")
 
 # --- 背景樣式優化 ---
@@ -12,8 +13,13 @@ st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; margin-bottom: 20px; }
     .stButton>button { width: 100%; height: 3em; font-size: 18px; }
-    /* 讓說明文字小一點 */
-    .small-hint { font-size: 12px; color: #888; margin-top: -10px; margin-bottom: 10px; }
+    /* 讓頂部兩個元件並排的容器 */
+    .top-container {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 15px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -38,31 +44,30 @@ try:
     sh = client.open_by_key(sheet_id)
     worksheet = sh.get_worksheet(0)
     
-    st.link_button("📂 開啟 Google 試算表原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+    # --- 重新編排頂部按鈕與開關 ---
+    col_link, col_toggle = st.columns([0.6, 0.4])
+    with col_link:
+        st.link_button("📂 開啟原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+    with col_toggle:
+        # 只保留開關，移除所有 Label 文字說明
+        manual_mode = st.toggle("⌨️ 手動輸入", value=False)
 
-    # --- 核心邏輯：新增一個開關來切換模式 ---
-    manual_mode = st.toggle("⌨️ 開啟手動輸入模式 (點擊即清空)", value=False)
-    if manual_mode:
-        st.markdown('<p class="small-hint">模式：手動打字（點擊框框即可輸入，無預設值）</p>', unsafe_allow_html=True)
-    else:
-        st.markdown('<p class="small-hint">模式：快速加減（從 120/80 開始調整）</p>', unsafe_allow_html=True)
-
+    # 準備表單介面
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
         
-        col1, col2 = st.columns(2)
-        with col1: date_val = st.date_input("日期", now.date())
-        with col2: time_val = st.time_input("時間", now.time())
+        c1, c2 = st.columns(2)
+        with c1: date_val = st.date_input("日期", now.date())
+        with c2: time_val = st.time_input("時間", now.time())
             
-        # 根據開關狀態決定 value
         if manual_mode:
-            # 手動模式：value 為 None，方便直接打字
+            # 手動輸入模式：無預設值
             sys_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120", step=1)
             dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80", step=1)
             pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70", step=1)
         else:
-            # 正常模式：有預設值，+/- 按鈕可用
+            # 快速調整模式：有預設值
             sys_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120, step=1)
             dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80, step=1)
             pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70, step=1)
@@ -70,10 +75,9 @@ try:
         context = st.selectbox("情境", ["一般", "起床", "下班", "睡前", "飯後"])
         notes = st.text_input("備註 (可不填)", placeholder="例如：感覺有點累")
         
-        submit_button = st.form_submit_button(label="💾 點擊儲存紀錄")
+        submit_button = st.form_submit_button(label="📝 儲存紀錄")
 
     if submit_button:
-        # 處理 None 值 (防呆)
         f_sys = sys_val if sys_val is not None else 120
         f_dia = dia_val if dia_val is not None else 80
         f_pul = pul_val if pul_val is not None else 70
