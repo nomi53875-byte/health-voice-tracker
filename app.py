@@ -11,11 +11,15 @@ st.set_page_config(page_title="血壓記錄助手", layout="centered")
 # --- 背景樣式優化 ---
 st.markdown("""
     <style>
-    /* 調整標題大小避開手機換行 */
     .main-title {
         font-size: 24px !important;
         font-weight: bold;
         margin-bottom: 20px;
+    }
+    /* 讓輸入框的提示文字更明顯一點 */
+    input::placeholder {
+        color: #aaaaaa !important;
+        opacity: 1;
     }
     .stButton>button {
         width: 100%;
@@ -25,7 +29,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 1. 標題縮小
 st.markdown('<p class="main-title">🩺 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
 # --- 連線邏輯 ---
@@ -53,7 +56,6 @@ try:
     sh = client.open_by_key(sheet_id)
     worksheet = sh.get_worksheet(0)
     
-    # 5. 新增直接連結到試算表的按鈕
     st.link_button("📂 開啟 Google 試算表原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
 
     # 準備表單介面
@@ -69,35 +71,34 @@ try:
         with col2:
             time_val = st.time_input("時間", now.time())
             
-        # 2. 解決手動輸入要刪除預設值的問題：使用 value=None (Streamlit 會顯示為空白或預設 placeholder)
-        # 但為了方便快速加減，我們保留數值型態，改用更直覺的 placeholder
-        systolic = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120, step=1)
-        diastolic = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80, step=1)
-        pulse = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70, step=1)
+        # --- 改動核心：value=None 讓點擊時是空的，但保留 placeholder 提示 ---
+        systolic = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120", step=1)
+        diastolic = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80", step=1)
+        pulse = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70", step=1)
         
-        # 3. 修改情境選項
         context = st.selectbox("情境", ["一般", "起床", "下班", "睡前", "飯後"])
         notes = st.text_input("備註 (可不填)", placeholder="例如：感覺有點累")
         
-        # 4. 修改按鈕圖示
         submit_button = st.form_submit_button(label="💾 點擊儲存紀錄")
 
     if submit_button:
-        if systolic == 0 or diastolic == 0:
-            st.error("請輸入正確的血壓數值！")
-        else:
-            new_row = [
-                str(date_val), 
-                time_val.strftime("%H:%M"), 
-                systolic, 
-                diastolic, 
-                pulse, 
-                context, 
-                notes
-            ]
-            worksheet.append_row(new_row)
-            st.balloons()
-            st.success("✅ 數據已成功存入雲端倉庫！")
+        # 如果用戶沒填，我們就自動補上預設值，這樣你沒打字也可以直接按儲存
+        final_sys = systolic if systolic is not None else 120
+        final_dia = diastolic if diastolic is not None else 80
+        final_pul = pulse if pulse is not None else 70
+        
+        new_row = [
+            str(date_val), 
+            time_val.strftime("%H:%M"), 
+            final_sys, 
+            final_dia, 
+            final_pul, 
+            context, 
+            notes
+        ]
+        worksheet.append_row(new_row)
+        st.balloons()
+        st.success(f"✅ 成功存入！({final_sys}/{final_dia} 心跳:{final_pul})")
 
     st.divider()
     st.subheader("📊 最近紀錄預覽")
