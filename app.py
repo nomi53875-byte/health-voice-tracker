@@ -1,40 +1,29 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import json
 
-st.set_page_config(page_title="健康語音助手開發中", layout="centered")
-st.title("📊 數據倉庫連線診斷")
+st.set_page_config(page_title="健康語音助手", layout="centered")
+st.title("📊 數據倉庫狀態")
 
 try:
-    # 從 Secrets 讀取原始 JSON 字串並轉換為字典
-    conf = json.loads(st.secrets["connections"]["gsheets"]["json_key"])
+    # 建立標準連線
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df = conn.read()
+    st.success("✅ 雲端倉庫連線成功！")
     
-    # 建立連線
-    conn = st.connection("gsheets", type=GSheetsConnection, **conf)
+    st.write(f"目前紀錄筆數：{len(df)}")
     
-    st.success("✅ 系統偵測到金鑰格式正確！")
-    
-    if st.button("🚀 測試寫入一筆資料"):
-        existing_data = conn.read()
+    if st.button("🚀 寫入測試數據"):
         test_entry = pd.DataFrame([{
-            "Date": "2026-04-25",
-            "Time": "01:40",
+            "Date": "2026-04-25", "Time": "01:50",
             "Systolic": 120, "Diastolic": 80, "Pulse": 70,
-            "Context": "最終方案測試", "Notes": "JSON 直接解析成功"
+            "Context": "TOML格式測試", "Notes": "連線終於通了！"
         }])
-        updated_df = pd.concat([existing_data, test_entry], ignore_index=True)
+        updated_df = pd.concat([df, test_entry], ignore_index=True)
         conn.update(data=updated_df)
         st.balloons()
-        st.success("成功寫入！請檢查 Google Sheets。")
+        st.success("寫入成功！")
 
 except Exception as e:
-    st.error("❌ 連線診斷失敗")
-    st.code(f"錯誤類型: {type(e).__name__}")
-    st.code(f"詳細訊息: {str(e)}")
-
-if st.checkbox("顯示目前數據預覽"):
-    try:
-        st.dataframe(conn.read())
-    except:
-        st.warning("尚無數據或無法讀取")
+    st.error("❌ 連線仍有問題")
+    st.exception(e) # 這會顯示完整的錯誤追蹤，非常有助於除錯
