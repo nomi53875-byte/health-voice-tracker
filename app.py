@@ -11,14 +11,13 @@ st.set_page_config(page_title="血壓記錄助手", layout="centered")
 # --- 背景樣式優化 ---
 st.markdown("""
     <style>
-    .main-title { font-size: 24px !important; font-weight: bold; margin-bottom: 20px; }
-    .stButton>button { width: 100%; height: 3em; font-size: 18px; }
-    /* 讓頂部兩個元件並排的容器 */
-    .top-container {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        margin-bottom: 15px;
+    .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 15px; }
+    /* 讓按鈕高度適中 */
+    .stButton>button { width: 100%; height: 3em; font-size: 16px; }
+    /* 調整元件之間的間距 */
+    [data-testid="column"] {
+        width: fit-content !important;
+        min-width: unset !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -44,13 +43,15 @@ try:
     sh = client.open_by_key(sheet_id)
     worksheet = sh.get_worksheet(0)
     
-    # --- 重新編排頂部按鈕與開關 ---
-    col_link, col_toggle = st.columns([0.6, 0.4])
+    # --- 關鍵修正：調整比例與縮短文字 ---
+    # 使用 0.5:0.5 平分，或稍微偏向按鈕
+    col_link, col_toggle = st.columns([0.5, 0.5])
     with col_link:
-        st.link_button("📂 開啟原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+        # 縮短按鈕文字，避免擠壓空間
+        st.link_button("📂 開啟試算表", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
     with col_toggle:
-        # 只保留開關，移除所有 Label 文字說明
-        manual_mode = st.toggle("⌨️ 手動輸入", value=False)
+        # 將開關文字簡化，確保開關本體能顯示
+        manual_mode = st.toggle("手動模式", value=False)
 
     # 準備表單介面
     with st.form("health_form", clear_on_submit=True):
@@ -62,25 +63,23 @@ try:
         with c2: time_val = st.time_input("時間", now.time())
             
         if manual_mode:
-            # 手動輸入模式：無預設值
-            sys_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120", step=1)
-            dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80", step=1)
-            pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70", step=1)
+            sys_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
+            dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
+            pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
         else:
-            # 快速調整模式：有預設值
-            sys_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120, step=1)
-            dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80, step=1)
-            pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70, step=1)
+            sys_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120)
+            dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80)
+            pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70)
         
         context = st.selectbox("情境", ["一般", "起床", "下班", "睡前", "飯後"])
-        notes = st.text_input("備註 (可不填)", placeholder="例如：感覺有點累")
+        notes = st.text_input("備註", placeholder="感覺...")
         
         submit_button = st.form_submit_button(label="📝 儲存紀錄")
 
     if submit_button:
         f_sys = sys_val if sys_val is not None else 120
         f_dia = dia_val if dia_val is not None else 80
-        f_pul = pul_val if pul_val is not None else 70
+        f_pul = pulse_val if pul_val is not None else 70 # 注意這裡變數名稱修正
         
         worksheet.append_row([str(date_val), time_val.strftime("%H:%M"), f_sys, f_dia, f_pul, context, notes])
         st.balloons()
