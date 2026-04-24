@@ -11,14 +11,10 @@ st.set_page_config(page_title="血壓記錄助手", layout="centered")
 # --- 背景樣式優化 ---
 st.markdown("""
     <style>
-    .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 15px; }
-    /* 讓按鈕高度適中 */
-    .stButton>button { width: 100%; height: 3em; font-size: 16px; }
-    /* 調整元件之間的間距 */
-    [data-testid="column"] {
-        width: fit-content !important;
-        min-width: unset !important;
-    }
+    .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
+    .stButton>button { width: 100%; height: 3.2em; font-size: 16px; margin-bottom: -10px; }
+    /* 讓開關稍微往右靠一點點，看起來更有層次 */
+    .stCheckbox { margin-top: 5px; margin-left: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -43,15 +39,10 @@ try:
     sh = client.open_by_key(sheet_id)
     worksheet = sh.get_worksheet(0)
     
-    # --- 關鍵修正：調整比例與縮短文字 ---
-    # 使用 0.5:0.5 平分，或稍微偏向按鈕
-    col_link, col_toggle = st.columns([0.5, 0.5])
-    with col_link:
-        # 縮短按鈕文字，避免擠壓空間
-        st.link_button("📂 開啟試算表", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
-    with col_toggle:
-        # 將開關文字簡化，確保開關本體能顯示
-        manual_mode = st.toggle("手動模式", value=False)
+    # --- 調整為上下結構 ---
+    st.link_button("📂 開啟 Google 試算表原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+    # 開關放在按鈕正下方
+    manual_mode = st.toggle("⌨️ 手動輸入模式", value=False)
 
     # 準備表單介面
     with st.form("health_form", clear_on_submit=True):
@@ -77,9 +68,10 @@ try:
         submit_button = st.form_submit_button(label="📝 儲存紀錄")
 
     if submit_button:
+        # 修正：確保變數名稱與輸入框一致
         f_sys = sys_val if sys_val is not None else 120
         f_dia = dia_val if dia_val is not None else 80
-        f_pul = pulse_val if pul_val is not None else 70 # 注意這裡變數名稱修正
+        f_pul = pul_val if pul_val is not None else 70
         
         worksheet.append_row([str(date_val), time_val.strftime("%H:%M"), f_sys, f_dia, f_pul, context, notes])
         st.balloons()
