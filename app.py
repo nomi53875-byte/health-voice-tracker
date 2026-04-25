@@ -5,44 +5,47 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 
-# 設定網頁標題
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- 排版 CSS ---
+# --- 核心排版 CSS：強制橫向並排 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
     .stButton>button { width: 100%; height: 3.2em; font-size: 16px; }
-    /* 讓 number_input 在手機上更緊湊 */
-    div[data-baseweb="input"] { margin-bottom: -5px; }
     
+    /* 強制 columns 在手機上不換行 */
+    [data-testid="column"] {
+        flex: 1 1 0% !important;
+        min-width: 0px !important;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+    }
+
     /* 網格背景 */
     .grid-overlay {
-        position: fixed;
-        top: 0; left: 0; width: 100%; height: 100%;
-        pointer-events: none;
-        z-index: 9999;
-        display: flex;
-        justify-content: space-between;
-        padding: 0 1rem;
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none; z-index: 9999;
+        display: flex; justify-content: space-between; padding: 0 1rem;
     }
     .grid-line { width: 1px; height: 100%; background-color: rgba(255, 0, 0, 0.2); position: relative; }
     .grid-num { position: absolute; top: 0; left: -5px; font-size: 10px; color: red; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# 網格控制項
 show_grid = st.sidebar.checkbox("📐 開啟排版校正網格", value=False)
 if show_grid:
     grid_html = '<div class="grid-overlay">'
-    for i in range(1, 14):
-        grid_html += f'<div class="grid-line"><span class="grid-num">{i}</span></div>'
+    for i in range(1, 14): grid_html += f'<div class="grid-line"><span class="grid-num">{i}</span></div>'
     grid_html += '</div>'
     st.markdown(grid_html, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 連線邏輯 ---
+# --- 連線邏輯 (略) ---
 def get_gspread_client():
     s = st.secrets["connections"]["gsheets"]
     info = {
@@ -61,23 +64,24 @@ try:
     sh = client.open_by_key(sheet_id)
     worksheet = sh.get_worksheet(0)
     
-    st.link_button("📂 開啟 Google 試算表原始檔", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
+    st.link_button("📂 開啟試算表", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
     manual_mode = st.toggle("手動輸入", value=True)
 
-    # --- 三次平均計算助手 (依照你的 3.5 線距比例調整) ---
-    with st.expander("🔢 三次平均計算助手 (高壓/低壓/心跳)"):
-        # col_spec 比例：[標籤, 高壓, 低壓, 心跳]
-        # 1.5 + 3.5 + 3.5 + 3.5 = 12 (完美對應 12 柵格)
+    with st.expander("🔢 三次平均計算助手"):
+        st.write("請輸入三次數據：")
+        
+        # 調整比例：標籤佔 1.5 份，三個格子各佔 3.5 份 (總共 12 份)
         col_spec = [1.5, 3.5, 3.5, 3.5]
         
         header = st.columns(col_spec)
+        # 用空文字佔位，讓標題跟格子對齊
         header[1].caption("高壓")
         header[2].caption("低壓")
         header[3].caption("心跳")
 
         def avg_row(label):
             cols = st.columns(col_spec)
-            with cols[0]: st.write(f"**{label}**")
+            cols[0].write(f"**{label}**")
             s = cols[1].number_input(f"{label}_S", min_value=0, max_value=250, value=None, placeholder="0", label_visibility="collapsed")
             d = cols[2].number_input(f"{label}_D", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
             p = cols[3].number_input(f"{label}_P", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
@@ -87,7 +91,7 @@ try:
         s2, d2, p2 = avg_row("2次")
         s3, d3, p3 = avg_row("3次")
 
-        # 計算邏輯... (略，保持不變)
+        # 計算與套用邏輯 (略)
         sys_list = [v for v in [s1, s2, s3] if v is not None and v > 0]
         dia_list = [v for v in [d1, d2, d3] if v is not None and v > 0]
         pul_list = [v for v in [p1, p2, p3] if v is not None and v > 0]
@@ -98,7 +102,7 @@ try:
             if st.button("✅ 套用數據"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
-    # --- 正式紀錄表單 (略，保持不變) ---
+    # --- 表單其餘部分與之前相同 (略) ---
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
@@ -106,7 +110,6 @@ try:
         with c1: date_val = st.date_input("日期", now.date())
         with c2: time_val = st.time_input("時間", now.time())
         
-        # 帶入暫存數據
         ts, td, tp = st.session_state.get('sys_input'), st.session_state.get('dia_input'), st.session_state.get('pul_input')
         
         if manual_mode:
@@ -126,4 +129,4 @@ try:
             for k in ['sys_input', 'dia_input', 'pul_input']: st.session_state.pop(k, None)
 
 except Exception as e:
-    st.error("連線錯誤")
+    st.error(f"連線錯誤: {e}")
