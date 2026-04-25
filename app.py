@@ -7,45 +7,17 @@ import pytz
 
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- 終極暴力 CSS ---
-# 這次我們直接對 .stHorizontalBlock 下死命令，無視所有斷點
+# --- 僅保留最基礎的美化，不碰排版 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    
-    /* 核心：鎖死所有橫向區塊 */
-    [data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        width: 100% !important;
-        gap: 2px !important;
-    }
-    
-    /* 強制每個 Column 寬度按比例分配，不准有最小寬度 */
-    [data-testid="column"] {
-        flex: 1 1 0% !important;
-        min-width: 0px !important;
-        max-width: none !important;
-    }
-
-    /* 針對輸入框內部的微小細節 */
-    input {
-        padding: 4px 2px !important;
-        font-size: 14px !important;
-        text-align: center !important;
-    }
-    
-    /* 移除所有可能導致換行的隱形邊距 */
-    div[data-testid="stVerticalBlock"] > div {
-        width: 100% !important;
-    }
+    .stButton>button { width: 100%; height: 3.2em; }
     </style>
     """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 連線邏輯 (保持不變) ---
+# --- 連線邏輯 ---
 def get_gspread_client():
     s = st.secrets["connections"]["gsheets"]
     info = {
@@ -67,15 +39,36 @@ try:
     st.link_button("📂 開啟試算表", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
     manual_mode = st.toggle("手動輸入", value=True)
 
+    # --- 關鍵：局部隔離排版 ---
     with st.expander("🔢 三次平均計算助手"):
-        # 直接使用簡約標題，不佔用行空間
-        st.markdown("<div style='display:flex; text-align:center; font-size:11px; color:gray; margin-bottom:-10px;'><div style='flex:1;'></div><div style='flex:3;'>高壓</div><div style='flex:3;'>低壓</div><div style='flex:3;'>心跳</div></div>", unsafe_allow_html=True)
+        # 這裡的 CSS 只會影響這個 expander 內部的特定結構
+        st.markdown("""
+            <style>
+            /* 針對這個 expander 內部的欄位強制並排 */
+            div[data-testid="stExpanderDetails"] div[data-testid="stHorizontalBlock"] {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                gap: 5px !important;
+            }
+            div[data-testid="stExpanderDetails"] div[data-testid="column"] {
+                flex: 1 1 0% !important;
+                min-width: 0px !important;
+            }
+            /* 縮小輸入框文字 */
+            div[data-testid="stExpanderDetails"] input {
+                padding: 2px !important;
+                font-size: 14px !important;
+                text-align: center !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<div style='display:flex; text-align:center; font-size:12px; color:gray;'><div style='flex:1;'></div><div style='flex:3;'>高壓</div><div style='flex:3;'>低壓</div><div style='flex:3;'>心跳</div></div>", unsafe_allow_html=True)
 
         def avg_row(label, key_pre):
-            # 比例：1:3:3:3 (標籤佔 1 份，其餘各 3 份)
-            cols = st.columns([1, 3, 3, 3])
+            cols = st.columns([1, 3.3, 3.3, 3.3])
             with cols[0]: st.write(f"**{label}**")
-            # 使用 text_input 避開 number_input 的內部保護結構
             s = cols[1].text_input(f"s{key_pre}", placeholder="0", label_visibility="collapsed")
             d = cols[2].text_input(f"d{key_pre}", placeholder="0", label_visibility="collapsed")
             p = cols[3].text_input(f"p{key_pre}", placeholder="0", label_visibility="collapsed")
@@ -85,6 +78,7 @@ try:
         s2, d2, p2 = avg_row("2", "r2")
         s3, d3, p3 = avg_row("3", "r3")
 
+        # 計算與套用邏輯 (略)
         def to_int(v): return int(v) if v and v.strip().isdigit() else None
         sl = [to_int(v) for v in [s1, s2, s3] if to_int(v)]
         dl = [to_int(v) for v in [d1, d2, d3] if to_int(v)]
@@ -96,11 +90,13 @@ try:
             if st.button("✅ 套用"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
-    # --- 正式紀錄區 ---
+    # --- 正式紀錄表單 (完全恢復原狀) ---
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
-        c1, c2 = st.columns(2) # 這裡只有兩欄，所以直屏絕對沒問題
+        
+        # 這裡不加任何 CSS 限制，讓它回歸 Streamlit 最穩定的樣子
+        c1, c2 = st.columns(2)
         with c1: date_val = st.date_input("日期", now.date())
         with c2: time_val = st.time_input("時間", now.time())
         
@@ -118,4 +114,4 @@ try:
             for k in ['sys_input', 'dia_input', 'pul_input']: st.session_state.pop(k, None)
 
 except Exception as e:
-    st.error(f"連線錯誤: {e}")
+    st.error("系統恢復中...")
