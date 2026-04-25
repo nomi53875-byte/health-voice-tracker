@@ -7,21 +7,31 @@ import pytz
 
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- CSS：優化間距 ---
+# --- 終極 CSS：鎖死寬度與位置 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    .stButton>button { width: 100%; height: 3.2em; }
     
-    /* 強制並排 */
-    div[data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        gap: 4px !important;
+    /* 1. 強制讓 expander 內的內容不換行 */
+    .stExpander [data-testid="stVerticalBlock"] {
+        display: block !important; /* 破解 flex 排版 */
     }
-    /* 讓標題小一點，省空間 */
-    .row-tag { font-size: 12px; color: #888; margin-bottom: -15px; }
+
+    /* 2. 針對輸入框進行極致寬度鎖定 */
+    .stExpander div[data-testid="column"] {
+        float: left !important; /* 使用舊式浮動，強制並排 */
+        width: 31% !important; /* 精確鎖定在 1/3 左右 */
+        min-width: 0px !important;
+        margin: 1% !important;
+    }
+
+    /* 3. 移除輸入框內的按鈕，確保格子可以縮到最短 */
+    .stExpander button { display: none !important; }
+    .stExpander div[data-baseweb="input"] { height: 35px !important; }
+    .stExpander input { text-align: center !important; font-size: 16px !important; padding: 0 !important; }
+    
+    /* 清除浮動防止下面崩潰 */
+    .clearfix::after { content: ""; clear: both; display: table; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,35 +60,41 @@ try:
     manual_mode = st.toggle("手動輸入", value=True)
 
     with st.expander("🔢 三次平均計算助手"):
-        # 標題列
-        h = st.columns([4, 4, 4])
-        h[0].caption("高壓")
-        h[1].caption("低壓")
-        h[2].caption("心跳")
+        # 顯示標題
+        st.markdown("""
+            <div style="display: flex; text-align: center; font-size: 12px; color: grey;">
+                <div style="flex: 1;">高壓</div>
+                <div style="flex: 1;">低壓</div>
+                <div style="flex: 1;">心跳</div>
+            </div>
+        """, unsafe_allow_html=True)
 
         def avg_row(label):
-            st.markdown(f'<p class="row-tag">{label}</p>', unsafe_allow_html=True)
-            cols = st.columns([4, 4, 4]) # 每個格子平分 4 柵格，空間極大
-            s = cols[0].number_input(f"{label}_S", min_value=0, max_value=250, value=None, placeholder="0", label_visibility="collapsed")
-            d = cols[1].number_input(f"{label}_D", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
-            p = cols[2].number_input(f"{label}_P", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
+            st.write(f"**{label}**")
+            # 強制並排三列
+            c1, c2, c3 = st.columns(3)
+            with c1: s = st.text_input(f"S{label}", placeholder="高壓", label_visibility="collapsed")
+            with c2: d = st.text_input(f"D{label}", placeholder="低壓", label_visibility="collapsed")
+            with c3: p = st.text_input(f"P{label}", placeholder="心跳", label_visibility="collapsed")
             return s, d, p
 
-        s1, d1, p1 = avg_row("第 1 次")
-        s2, d2, p2 = avg_row("第 2 次")
-        s3, d3, p3 = avg_row("第 3 次")
+        s1, d1, p1 = avg_row("1次")
+        s2, d2, p2 = avg_row("2次")
+        s3, d3, p3 = avg_row("3次")
 
-        sys_list = [v for v in [s1, s2, s3] if v]
-        dia_list = [v for v in [d1, d2, d3] if v]
-        pul_list = [v for v in [p1, p2, p3] if v]
+        # 計算邏輯...
+        def to_int(v): return int(v) if v and v.strip().isdigit() else None
+        sl = [to_int(v) for v in [s1, s2, s3] if to_int(v)]
+        dl = [to_int(v) for v in [d1, d2, d3] if to_int(v)]
+        pl = [to_int(v) for v in [p1, p2, p3] if to_int(v)]
 
-        if sys_list and dia_list and pul_list:
-            avg_s, avg_d, avg_p = int(sum(sys_list)/len(sys_list)), int(sum(dia_list)/len(dia_list)), int(sum(pul_list)/len(pul_list))
-            st.info(f"💡 平均：{avg_s}/{avg_d} ({avg_p})")
+        if sl and dl and pl:
+            avg_s, avg_d, avg_p = int(sum(sl)/len(sl)), int(sum(dl)/len(dl)), int(sum(pl)/len(pl))
+            st.info(f"💡 平均：{avg_s} / {avg_d} ({avg_p})")
             if st.button("✅ 套用"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
-    # --- 正式紀錄表單 (穩定版) ---
+    # --- 正式紀錄表單 (維持穩定) ---
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
