@@ -7,39 +7,47 @@ import pytz
 
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- 核心排版 CSS：強制橫向並排 ---
+# --- 核心 CSS：極限壓縮輸入框 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    .stButton>button { width: 100%; height: 3.2em; font-size: 16px; }
     
-    /* 強制 columns 在手機上不換行 */
-    [data-testid="column"] {
-        flex: 1 1 0% !important;
-        min-width: 0px !important;
-    }
+    /* 1. 強制並排 */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        align-items: center !important;
+    }
+    [data-testid="column"] {
+        flex: 1 1 0% !important;
+        min-width: 0px !important;
     }
 
-    /* 網格背景 */
-    .grid-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        pointer-events: none; z-index: 9999;
-        display: flex; justify-content: space-between; padding: 0 1rem;
+    /* 2. 壓縮 number_input 的內部元件 */
+    /* 縮減按鈕寬度 */
+    .stExpander button[kind="secondary"] {
+        width: 25px !important;
+        min-width: 25px !important;
+        padding: 0px !important;
     }
-    .grid-line { width: 1px; height: 100%; background-color: rgba(255, 0, 0, 0.2); position: relative; }
-    .grid-num { position: absolute; top: 0; left: -5px; font-size: 10px; color: red; font-weight: bold; }
+    /* 縮減輸入框間距 */
+    .stExpander div[data-baseweb="input"] {
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+    }
+    .stExpander input {
+        padding: 2px !important;
+        text-align: center !important;
+        font-size: 14px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
+# 網格控制項
 show_grid = st.sidebar.checkbox("📐 開啟排版校正網格", value=False)
 if show_grid:
-    grid_html = '<div class="grid-overlay">'
-    for i in range(1, 14): grid_html += f'<div class="grid-line"><span class="grid-num">{i}</span></div>'
+    grid_html = '<div class="grid-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999; display:flex; justify-content:space-between; padding:0 1rem;">'
+    for i in range(1, 14): grid_html += f'<div style="width:1px; height:100%; background:rgba(255,0,0,0.2); position:relative;"><span style="position:absolute; top:0; left:-2px; font-size:8px; color:red;">{i}</span></div>'
     grid_html += '</div>'
     st.markdown(grid_html, unsafe_allow_html=True)
 
@@ -68,28 +76,25 @@ try:
     manual_mode = st.toggle("手動輸入", value=True)
 
     with st.expander("🔢 三次平均計算助手"):
-        st.write("請輸入三次數據：")
-        
-        # 調整比例：標籤佔 1.5 份，三個格子各佔 3.5 份 (總共 12 份)
+        # 標籤 1.5, 三個數據框各 3.5 (總共 12)
         col_spec = [1.5, 3.5, 3.5, 3.5]
         
-        header = st.columns(col_spec)
-        # 用空文字佔位，讓標題跟格子對齊
-        header[1].caption("高壓")
-        header[2].caption("低壓")
-        header[3].caption("心跳")
+        h = st.columns(col_spec)
+        h[1].caption("高壓")
+        h[2].caption("低壓")
+        h[3].caption("心跳")
 
         def avg_row(label):
             cols = st.columns(col_spec)
-            cols[0].write(f"**{label}**")
+            with cols[0]: st.write(f"**{label}**")
             s = cols[1].number_input(f"{label}_S", min_value=0, max_value=250, value=None, placeholder="0", label_visibility="collapsed")
             d = cols[2].number_input(f"{label}_D", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
             p = cols[3].number_input(f"{label}_P", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
             return s, d, p
 
-        s1, d1, p1 = avg_row("1次")
-        s2, d2, p2 = avg_row("2次")
-        s3, d3, p3 = avg_row("3次")
+        s1, d1, p1 = avg_row("1")
+        s2, d2, p2 = avg_row("2")
+        s3, d3, p3 = avg_row("3")
 
         # 計算與套用邏輯 (略)
         sys_list = [v for v in [s1, s2, s3] if v is not None and v > 0]
@@ -102,7 +107,7 @@ try:
             if st.button("✅ 套用數據"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
-    # --- 表單其餘部分與之前相同 (略) ---
+    # --- 正式紀錄表單 (維持原樣) ---
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
@@ -112,14 +117,9 @@ try:
         
         ts, td, tp = st.session_state.get('sys_input'), st.session_state.get('dia_input'), st.session_state.get('pul_input')
         
-        if manual_mode:
-            sys_val = st.number_input("收縮壓 (高壓)", min_value=0, value=ts, placeholder="120")
-            dia_val = st.number_input("舒張壓 (低壓)", min_value=0, value=td, placeholder="80")
-            pul_val = st.number_input("心跳 (Pulse)", min_value=0, value=tp, placeholder="70")
-        else:
-            sys_val = st.number_input("收縮壓 (高壓)", min_value=0, value=ts if ts else 120)
-            dia_val = st.number_input("舒張壓 (低壓)", min_value=0, value=td if td else 80)
-            pul_val = st.number_input("心跳 (Pulse)", min_value=0, value=tp if tp else 70)
+        sys_val = st.number_input("收縮壓 (高壓)", min_value=0, value=ts, placeholder="120")
+        dia_val = st.number_input("舒張壓 (低壓)", min_value=0, value=td, placeholder="80")
+        pul_val = st.number_input("心跳 (Pulse)", min_value=0, value=tp, placeholder="70")
         
         context = st.selectbox("情境", ["一般", "起床", "下班", "睡前", "飯後"])
         notes = st.text_input("備註")
@@ -129,4 +129,4 @@ try:
             for k in ['sys_input', 'dia_input', 'pul_input']: st.session_state.pop(k, None)
 
 except Exception as e:
-    st.error(f"連線錯誤: {e}")
+    st.error("連線錯誤")
