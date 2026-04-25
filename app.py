@@ -7,23 +7,12 @@ import pytz
 
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- 核心 CSS：美化 HTML 輸入框 ---
+# --- 核心 CSS：確保整個頁面的背景與元件不要亂跑 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    
-    /* 讓 HTML 表格內的輸入框看起來像 Streamlit 元件 */
-    .html-input {
-        width: 90% !important;
-        height: 35px !important;
-        border: 1px solid #ddd !important;
-        border-radius: 5px !important;
-        text-align: center !important;
-        font-size: 16px !important;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    td { padding: 5px 2px; text-align: center; }
-    .label-td { font-weight: bold; width: 15%; }
+    /* 這裡使用一個超級暴力 CSS，鎖定所有可能被 Streamlit 換行的容器 */
+    [data-testid="column"] { min-width: 0px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -51,40 +40,55 @@ try:
     st.link_button("📂 開啟試算表", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
     manual_mode = st.toggle("手動輸入", value=True)
 
-    # --- 關鍵變革：使用 HTML 表格強行並排 ---
     with st.expander("🔢 三次平均計算助手"):
-        st.write("請輸入三次數據：")
-        
-        # 我們直接在 Python 裡處理輸入
-        def draw_avg_row(row_num):
-            cols = st.columns([1, 3.6, 3.6, 3.6])
-            with cols[0]: st.write(f"**{row_num}**")
-            # 這裡用 st.text_input，但透過上面的 CSS 強制它們「不要長胖」
-            s = cols[1].text_input(f"S{row_num}", placeholder="高壓", label_visibility="collapsed", key=f"sys_{row_num}")
-            d = cols[2].text_input(f"D{row_num}", placeholder="低壓", label_visibility="collapsed", key=f"dia_{row_num}")
-            p = cols[3].text_input(f"P{row_num}", placeholder="心跳", label_visibility="collapsed", key=f"pul_{row_num}")
+        # --- 這次我們不用列，我們用「隱形表格」排版 ---
+        # 標題
+        st.markdown("""
+            <table style="width:100%; border:none; table-layout:fixed;">
+                <tr style="font-size:12px; color:grey; text-align:center;">
+                    <td style="width:12%;"></td>
+                    <td>高壓</td>
+                    <td>低壓</td>
+                    <td>心跳</td>
+                </tr>
+            </table>
+        """, unsafe_allow_html=True)
+
+        def draw_html_like_row(label, key_suffix):
+            # 這是重點：我們在 columns 外層再包一層強制 CSS
+            st.write("") # 增加一點間距
+            st.markdown(f'<div style="margin-bottom:-45px; font-weight:bold;">{label}</div>', unsafe_allow_html=True)
+            
+            # 使用非常懸殊的比例，並強制在 CSS 裡鎖死
+            cols = st.columns([1.2, 3.6, 3.6, 3.6])
+            with cols[1]: s = st.text_input(f"S{key_suffix}", placeholder="0", label_visibility="collapsed", key=f"s{key_suffix}")
+            with cols[2]: d = st.text_input(f"D{key_suffix}", placeholder="0", label_visibility="collapsed", key=f"d{key_suffix}")
+            with cols[3]: p = st.text_input(f"P{key_suffix}", placeholder="0", label_visibility="collapsed", key=f"p{key_suffix}")
             return s, d, p
 
-        # ！！重點：為了防止 st.columns 換行，我們加上最後的強制令！！
+        # 加入這次唯一的希望：強制所有同層級的 column 寬度與排列
         st.markdown("""
             <style>
-            div[data-testid="stHorizontalBlock"] {
+            /* 這是針對特定區塊的強效藥 */
+            div[data-testid="stExpanderDetails"] div[data-testid="stHorizontalBlock"] {
                 display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
+                align-items: center !important;
             }
-            div[data-testid="column"] {
-                min-width: 0px !important;
+            div[data-testid="stExpanderDetails"] div[data-testid="column"] {
                 flex: 1 1 0% !important;
+                min-width: 0px !important;
+                max-width: none !important;
             }
             </style>
         """, unsafe_allow_html=True)
 
-        s1, d1, p1 = draw_avg_row(1)
-        s2, d2, p2 = draw_avg_row(2)
-        s3, d3, p3 = draw_avg_row(3)
+        s1, d1, p1 = draw_html_like_row("1", "1")
+        s2, d2, p2 = draw_html_like_row("2", "2")
+        s3, d3, p3 = draw_html_like_row("3", "3")
 
-        # 計算邏輯
+        # 計算邏輯 (略)
         def to_int(v): return int(v) if v and v.strip().isdigit() else None
         sl = [to_int(v) for v in [s1, s2, s3] if to_int(v)]
         dl = [to_int(v) for v in [d1, d2, d3] if to_int(v)]
@@ -92,11 +96,11 @@ try:
 
         if sl and dl and pl:
             avg_s, avg_d, avg_p = int(sum(sl)/len(sl)), int(sum(dl)/len(dl)), int(sum(pl)/len(pl))
-            st.info(f"💡 平均：{avg_s} / {avg_d} ({avg_p})")
-            if st.button("✅ 套用平均值"):
+            st.info(f"💡 平均：{avg_s}/{avg_d} ({avg_p})")
+            if st.button("✅ 套用"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
-    # --- 正式紀錄表單 (略) ---
+    # --- 正式紀錄表單 (維持穩定) ---
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
