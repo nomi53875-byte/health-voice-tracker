@@ -7,40 +7,51 @@ import pytz
 
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- 核心 CSS：專門應對直屏的布局 ---
+# --- 終極手機排版 CSS ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
     
-    /* 1. 強制讓 expader 內部的 columns 比例在手機直屏下不崩潰 */
-    /* 我們強制三個數據框平分剩下的寬度 */
-    .stExpander [data-testid="column"] {
-        min-width: 0px !important;
-        flex: 1 1 25% !important; /* 讓四個欄位(1標籤+3數據)大約佔 25% */
-        padding: 0 2px !important;
+    /* 核心：強行扭轉手機直屏排版 */
+    @media (max-width: 640px) {
+        div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            gap: 2px !important; /* 縮小格與格之間的縫隙 */
+        }
+        div[data-testid="column"] {
+            min-width: 0px !important;
+            flex-grow: 1 !important;
+        }
     }
 
-    /* 2. 移除 text_input 的所有多餘邊距與外框 */
-    .stExpander div[data-baseweb="base-input"] {
-        background-color: #f8f9fa !important;
-        border-radius: 5px !important;
+    /* 壓縮輸入框與按鈕 */
+    .stExpander div[data-baseweb="input"] {
+        height: 32px !important;
+        padding: 0 !important;
+    }
+    .stExpander button {
+        width: 20px !important;
+        min-width: 20px !important;
+        height: 32px !important;
     }
     .stExpander input {
+        font-size: 14px !important;
         text-align: center !important;
-        padding: 8px 2px !important;
-        font-size: 15px !important;
-        height: 40px !important;
-    }
-    
-    /* 3. 標籤微調 */
-    .row-label {
-        font-size: 16px;
-        font-weight: bold;
-        line-height: 40px; /* 讓文字垂直居中對齊輸入框 */
-        text-align: center;
+        padding: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
+
+# 網格控制 (校正用)
+show_grid = st.sidebar.checkbox("📐 開啟排版校正網格", value=False)
+if show_grid:
+    grid_html = '<div style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999; display:flex; justify-content:space-between; padding:0 1rem;">'
+    for i in range(1, 14): grid_html += f'<div style="width:1px; height:100%; background:rgba(255,0,0,0.2); position:relative;"><span style="position:absolute; top:0; left:-2px; font-size:8px; color:red;">{i}</span></div>'
+    grid_html += '</div>'
+    st.markdown(grid_html, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
@@ -67,42 +78,38 @@ try:
     manual_mode = st.toggle("手動輸入", value=True)
 
     with st.expander("🔢 三次平均計算助手"):
-        # 使用平分比例 [1, 1, 1, 1] 確保不會有誰被擠出去
-        col_spec = [1, 1, 1, 1]
+        # 標籤 2, 數據格各 3.3
+        col_spec = [2, 3.3, 3.3, 3.3]
         
         h = st.columns(col_spec)
-        h[1].markdown("<p style='text-align:center;font-size:12px;color:grey;'>高壓</p>", unsafe_allow_html=True)
-        h[2].markdown("<p style='text-align:center;font-size:12px;color:grey;'>低壓</p>", unsafe_allow_html=True)
-        h[3].markdown("<p style='text-align:center;font-size:12px;color:grey;'>心跳</p>", unsafe_allow_html=True)
+        h[1].caption("高壓")
+        h[2].caption("低壓")
+        h[3].caption("心跳")
 
         def avg_row(label):
             cols = st.columns(col_spec)
-            with cols[0]: st.markdown(f'<div class="row-label">{label}</div>', unsafe_allow_html=True)
-            # 使用 key 確保狀態不打架，且全部使用 text_input 避開按鈕寬度限制
-            s = cols[1].text_input(f"S{label}", placeholder="0", label_visibility="collapsed")
-            d = cols[2].text_input(f"D{label}", placeholder="0", label_visibility="collapsed")
-            p = cols[3].text_input(f"P{label}", placeholder="0", label_visibility="collapsed")
+            with cols[0]: st.write(f"**{label}**")
+            s = cols[1].number_input(f"{label}_S", min_value=0, max_value=250, value=None, placeholder="0", label_visibility="collapsed")
+            d = cols[2].number_input(f"{label}_D", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
+            p = cols[3].number_input(f"{label}_P", min_value=0, max_value=200, value=None, placeholder="0", label_visibility="collapsed")
             return s, d, p
 
-        s1, d1, p1 = avg_row("1")
-        s2, d2, p2 = avg_row("2")
-        s3, d3, p3 = avg_row("3")
+        s1, d1, p1 = avg_row("1次")
+        s2, d2, p2 = avg_row("2次")
+        s3, d3, p3 = avg_row("3次")
 
-        def to_int(v):
-            if v and v.strip().isdigit(): return int(v)
-            return None
-
-        sys_list = [to_int(v) for v in [s1, s2, s3] if to_int(v)]
-        dia_list = [to_int(v) for v in [d1, d2, d3] if to_int(v)]
-        pul_list = [to_int(v) for v in [p1, p2, p3] if to_int(v)]
+        # 計算邏輯
+        sys_list = [v for v in [s1, s2, s3] if v is not None and v > 0]
+        dia_list = [v for v in [d1, d2, d3] if v is not None and v > 0]
+        pul_list = [v for v in [p1, p2, p3] if v is not None and v > 0]
 
         if sys_list and dia_list and pul_list:
             avg_s, avg_d, avg_p = int(sum(sys_list)/len(sys_list)), int(sum(dia_list)/len(dia_list)), int(sum(pul_list)/len(pul_list))
-            st.info(f"💡 平均結果：{avg_s} / {avg_d} ({avg_p})")
-            if st.button("✅ 套用數據"):
+            st.info(f"💡 平均：{avg_s}/{avg_d} ({avg_p})")
+            if st.button("✅ 套用"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
-    # --- 正式紀錄表單 (維持穩定版本) ---
+    # --- 正式紀錄表單 (維持穩定) ---
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
         now = datetime.now(taipei_tz)
@@ -112,7 +119,6 @@ try:
         
         ts, td, tp = st.session_state.get('sys_input'), st.session_state.get('dia_input'), st.session_state.get('pul_input')
         
-        # 表單內維持 number_input，因為空間足夠
         sys_val = st.number_input("收縮壓 (高壓)", min_value=0, value=ts, placeholder="120")
         dia_val = st.number_input("舒張壓 (低壓)", min_value=0, value=td, placeholder="80")
         pul_val = st.number_input("心跳 (Pulse)", min_value=0, value=tp, placeholder="70")
