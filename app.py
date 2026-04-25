@@ -7,12 +7,12 @@ import pytz
 
 st.set_page_config(page_title="健康紀錄助手", layout="centered")
 
-# --- 核心 CSS：極限壓縮輸入框 ---
+# --- 核心 CSS：地獄級壓縮 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
     
-    /* 1. 強制並排 */
+    /* 1. 強制橫向不換行 */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -23,27 +23,34 @@ st.markdown("""
         min-width: 0px !important;
     }
 
-    /* 2. 壓縮 number_input 的內部元件 */
-    /* 縮減按鈕寬度 */
+    /* 2. 針對助手內的 number_input 進行地獄壓縮 */
+    /* 讓按鈕變得極小 (15px) */
     .stExpander button[kind="secondary"] {
-        width: 25px !important;
-        min-width: 25px !important;
+        width: 15px !important;
+        min-width: 15px !important;
+        height: 30px !important;
         padding: 0px !important;
+        border: none !important;
     }
-    /* 縮減輸入框間距 */
+    /* 移除所有內邊距，讓文字靠攏 */
     .stExpander div[data-baseweb="input"] {
-        padding-left: 2px !important;
-        padding-right: 2px !important;
+        padding-left: 0px !important;
+        padding-right: 0px !important;
+        border-radius: 4px !important;
     }
     .stExpander input {
-        padding: 2px !important;
+        padding: 0px !important;
         text-align: center !important;
-        font-size: 14px !important;
+        font-size: 12px !important; /* 字體縮小 */
+    }
+    /* 隱藏加減號圖標外的多餘空間 */
+    .stExpander svg {
+        width: 10px !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 網格控制項
+# 網格控制項 (保持不變)
 show_grid = st.sidebar.checkbox("📐 開啟排版校正網格", value=False)
 if show_grid:
     grid_html = '<div class="grid-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999; display:flex; justify-content:space-between; padding:0 1rem;">'
@@ -53,7 +60,7 @@ if show_grid:
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 連線邏輯 (略) ---
+# --- 連線邏輯 ---
 def get_gspread_client():
     s = st.secrets["connections"]["gsheets"]
     info = {
@@ -76,8 +83,8 @@ try:
     manual_mode = st.toggle("手動輸入", value=True)
 
     with st.expander("🔢 三次平均計算助手"):
-        # 標籤 1.5, 三個數據框各 3.5 (總共 12)
-        col_spec = [1.5, 3.5, 3.5, 3.5]
+        # 比例設為 [1, 1, 1, 1]，即平分螢幕
+        col_spec = [1, 1, 1, 1]
         
         h = st.columns(col_spec)
         h[1].caption("高壓")
@@ -96,7 +103,7 @@ try:
         s2, d2, p2 = avg_row("2")
         s3, d3, p3 = avg_row("3")
 
-        # 計算與套用邏輯 (略)
+        # 計算與套用邏輯
         sys_list = [v for v in [s1, s2, s3] if v is not None and v > 0]
         dia_list = [v for v in [d1, d2, d3] if v is not None and v > 0]
         pul_list = [v for v in [p1, p2, p3] if v is not None and v > 0]
@@ -104,7 +111,7 @@ try:
         if sys_list and dia_list and pul_list:
             avg_s, avg_d, avg_p = int(sum(sys_list)/len(sys_list)), int(sum(dia_list)/len(dia_list)), int(sum(pul_list)/len(pul_list))
             st.info(f"💡 平均：{avg_s}/{avg_d} ({avg_p})")
-            if st.button("✅ 套用數據"):
+            if st.button("✅ 套用"):
                 st.session_state.update({'sys_input': avg_s, 'dia_input': avg_d, 'pul_input': avg_p})
 
     # --- 正式紀錄表單 (維持原樣) ---
