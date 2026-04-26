@@ -16,7 +16,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手 (穩定版)</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手 (修正版)</p>', unsafe_allow_html=True)
 
 # --- Google Sheets 連線函式 ---
 def get_gspread_client():
@@ -49,7 +49,7 @@ try:
     # 快捷功能區
     st.link_button("📂 開啟試算表查閱", f"https://docs.google.com/spreadsheets/d/{sheet_id}")
     
-    # --- 重要：手動模式開關 ---
+    # --- 手動模式開關 ---
     manual_mode = st.toggle("開啟手動輸入日期/時間", value=False)
 
     # --- 紀錄表單 ---
@@ -61,13 +61,11 @@ try:
         col1, col2 = st.columns(2)
         
         if manual_mode:
-            # 手動模式：顯示輸入框讓使用者調整
             with col1:
                 date_val = st.date_input("測量日期", now.date())
             with col2:
                 time_val = st.time_input("測量時間", now.time())
         else:
-            # 自動模式：不顯示輸入框，直接抓現在，但給使用者看一眼確認
             date_val = now.date()
             time_val = now.time()
             st.info(f"📅 自動記錄：{date_val} {time_val.strftime('%H:%M')}")
@@ -83,4 +81,26 @@ try:
 
         # 額外資訊
         context = st.selectbox("量測情境", ["一般", "起床", "睡前", "運動後", "感冒/不適"])
-        notes =
+        # 這裡修正了剛才的語法錯誤
+        notes = st.text_input("備註 (心情或身體狀況)", value="")
+
+        # 提交按鈕
+        submit_clicked = st.form_submit_button("📝 儲存紀錄")
+
+        if submit_clicked:
+            new_row = [
+                str(date_val),
+                time_val.strftime("%H:%M"),
+                sys_val,
+                dia_val,
+                pul_val,
+                context,
+                notes
+            ]
+            
+            worksheet.append_row(new_row)
+            st.success("✅ 紀錄成功儲存！")
+            st.balloons()
+
+except Exception as e:
+    st.error(f"連線中...")
