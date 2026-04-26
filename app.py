@@ -17,7 +17,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-title">🩺 雲端健康紀錄助手 (通用版)</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
 # --- 1. 取得網址中的試算表 ID ---
 # 預設 ID (你的)
@@ -61,7 +61,7 @@ try:
     worksheet = sh.get_worksheet(0)
     
     st.link_button("📂 開啟目前試算表原始檔", f"https://docs.google.com/spreadsheets/d/{url_id}")
-    manual_mode = st.toggle("⌨️ 手動輸入模式", value=False)
+    manual_mode = st.toggle("手動輸入模式", value=True)
 
     with st.form("health_form", clear_on_submit=True):
         taipei_tz = pytz.timezone('Asia/Taipei')
