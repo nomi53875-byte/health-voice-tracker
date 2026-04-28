@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 import time
 
@@ -13,13 +13,8 @@ st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
     .stButton>button { 
-        width: 100%; 
-        height: 3.5em; 
-        font-size: 18px !important; 
-        font-weight: bold; 
-        background-color: #28a745 !important; 
-        color: white !important; 
-        border-radius: 12px;
+        width: 100%; height: 3.5em; font-size: 18px !important; font-weight: bold; 
+        background-color: #28a745 !important; color: white !important; border-radius: 12px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -30,6 +25,7 @@ st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
+CSV_HEADER = "日期,時間,高壓,低壓,心跳,情境"
 
 def get_gh():
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
@@ -69,42 +65,44 @@ if st.button("🚀 確定儲存紀錄"):
     else:
         with st.spinner('同步中...'):
             content, sha = get_gh()
-            if content is not None:
-                new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
-                updated = content.strip() + "\n" + new_line
-                if up_gh(updated, sha, "Add entry"):
-                    st.success("✅ 儲存成功！")
-                    time.sleep(1)
-                    st.rerun()
+            # 如果 CSV 不存在或完全沒內容，初始化它
+            if content is None or len(content.strip()) == 0:
+                content = CSV_HEADER
+            
+            new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
+            updated = content.strip() + "\n" + new_line
+            if up_gh(updated, sha, "Add record"):
+                st.success("✅ 儲存成功！")
+                time.sleep(1)
+                st.rerun()
 
 st.divider()
 
 # --- 3. 數據分析與圖表區 ---
 try:
-    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={time.time()}"
-    df = pd.read_csv(csv_url)
-    
-    # 清理：移除空行與非法資料
-    df = df.dropna(subset=['日期', '時間', '高壓', '低壓', '心跳'])
+    csv_raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={time.time()}"
+    # 讀取時強制指定欄位名稱，防止 CSV 標題錯誤導致無法繪圖
+    df = pd.read_csv(csv_raw_url)
     
     if len(df) > 0:
-        # 轉換日期格式
+        # 統一欄位名稱（防呆處理）
+        df.columns = ["日期", "時間", "高壓", "低壓", "心跳", "情境"]
+        df = df.dropna(subset=['高壓', '低壓', '心跳'])
+        
+        # 日期處理
         df['日期格式'] = pd.to_datetime(df['日期'])
         df = df.sort_values(by=['日期格式', '時間'])
 
-        # 準備圖表數據
-        # 建立一個座標軸標籤：月/日 時:分
-        df['時間點'] = df['日期格式'].dt.strftime('%m/%d') + " " + df['時間'].astype(str)
-        
-        # 提取圖表專用 DataFrame
-        chart_df = df[['時間點', '高壓', '低壓', '心跳']].copy()
-        chart_df = chart_df.set_index('時間點')
+        # 圖表顯示
+        st.subheader("📈 趨勢分析")
+        chart_df = df[['日期格式', '高壓', '低壓', '心跳']].copy()
+        # 建立時間軸標籤
+        df['時間點'] = df['日期格式'].dt.strftime('%m/%d') + " " + df['時間']
+        chart_df.index = df['時間點']
+        st.line_chart(chart_df[['高壓', '低壓', '心跳']])
 
-        st.subheader("📈 血壓趨勢圖")
-        st.line_chart(chart_df)
-
-        # 顯示最近資料明細
-        st.write("📊 最近 10 筆紀錄")
+        # 明細顯示
+        st.write("📊 最近紀錄")
         df_display = df.tail(10).copy()
         df_display['日期'] = df_display['日期格式'].dt.strftime('%Y-%m-%d')
         
@@ -117,14 +115,23 @@ try:
             "情境": st.column_config.TextColumn("情境", width=60)
         }
         
-        # 倒序顯示，最新的在上面
         styled = df_display.iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
                                            .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
         
         st.dataframe(styled, hide_index=True, column_config=cfg)
     else:
-        st.info("目前 CSV 檔案內尚無數據，請先儲存第一筆紀錄。")
+        st.info("尚未偵測到數據。")
 
 except Exception as e:
-    st.warning(f"圖表載入中或發生錯誤。請確認資料格式是否正確。")
-    # st.write(e) # 除錯用，若圖表還是不出來可以把這行註解拿掉看報錯內容
+    st.info("正在等待第一筆有效數據產生圖表...")
+
+with st.expander("🗑️ 管理"):
+    if st.button("刪除最後一筆"):
+        c, s = get_gh()
+        if c:
+            lines = [l for l in c.split('\n') if l.strip()]
+            if len(lines) > 1:
+                if up_gh('\n'.join(lines[:-1]), s, "Del"):
+                    st.warning("已刪除")
+                    time.sleep(1)
+                    st.rerun()
