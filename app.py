@@ -13,7 +13,6 @@ st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
     .stButton>button { width: 100%; height: 3.2em; font-size: 16px; }
-    /* 表格字體稍微放大一點 */
     .stDataFrame { font-size: 14px; }
     </style>
     """, unsafe_allow_html=True)
@@ -43,21 +42,11 @@ def save_to_github(new_data_row):
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# 顏色設定函數：高壓 > 140 或 低壓 > 90 變紅色
-def color_coding(val):
-    color = 'red' if isinstance(val, (int, float)) and (
-        (val >= 140 if "高壓" in str(st.session_state.get('current_col','')) else False) or 
-        (val >= 90 if "低壓" in str(st.session_state.get('current_col','')) else False)
-    ) else 'black'
-    # 這裡使用更精確的 pandas styler 邏輯
-    return f'color: {color}'
-
 def apply_style(df):
     def highlight_high(val):
-        return 'color: red' if val >= 140 else ''
+        return 'color: red' if isinstance(val, (int, float)) and val >= 140 else ''
     def highlight_low(val):
-        return 'color: red' if val >= 90 else ''
-    
+        return 'color: red' if isinstance(val, (int, float)) and val >= 90 else ''
     return df.style.map(highlight_high, subset=['高壓']).map(highlight_low, subset=['低壓'])
 
 # --- 3. 介面區塊 ---
@@ -99,21 +88,25 @@ st.divider()
 try:
     csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?t={datetime.now().timestamp()}"
     df = pd.read_csv(csv_url)
-    df['日期'] = pd.to_datetime(df['日期'])
     
-    # 顯示最近 5 筆 (隱藏索引，最新在前)
+    # 修正 1：移除無意義的 Unnamed 欄位
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    
+    # 修正 2：強制日期格式為純日期字串，避免出現 00:00:00
+    df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d')
+    
     st.write("📊 最近 5 筆紀錄 (異常數值顯示 :red[紅色])")
+    # 只取最後 5 筆並倒序
     recent_df = df.tail(5).iloc[::-1]
     st.dataframe(apply_style(recent_df), hide_index=True, use_container_width=True)
     
-    # 讀取全部按鈕 (過濾六個月)
     if st.button("🔍 讀取六個月內完整紀錄"):
         st.write("📋 六個月內完整資料")
-        six_months_ago = datetime.now() - timedelta(days=180)
+        # 過濾六個月內的資料
+        six_months_ago = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
         full_df = df[df['日期'] >= six_months_ago].iloc[::-1]
         st.dataframe(apply_style(full_df), hide_index=True, use_container_width=True)
         
-        # 下載功能
         csv_data = full_df.to_csv(index=False).encode('utf-8-sig')
         st.download_button("📥 下載此表為 CSV", csv_data, "health_history.csv", "text/csv")
 except Exception as e:
