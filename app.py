@@ -6,13 +6,13 @@ from datetime import datetime, timedelta
 import pytz
 import time
 
-# --- 網頁配置 ---
+# --- 基礎設定 ---
 st.set_page_config(page_title="Wynter 健康紀錄助手", layout="centered")
 
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    .stButton>button { width: 100%; height: 3.2em; font-size: 16px; background-color: #ff4b4b; color: white; border-radius: 10px; }
+    .stButton>button { width: 100%; height: 3.2em; font-size: 18px; font-weight: bold; background-color: #4CAF50; color: white; }
     [data-testid="stDataFrame"] { max-width: fit-content !important; }
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { text-align: center !important; }
     </style>
@@ -20,7 +20,7 @@ st.markdown("""
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 1. GitHub 參數 ---
+# --- 1. GitHub Secrets ---
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
@@ -41,7 +41,7 @@ def up_gh(txt, sha, msg):
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# --- 2. 輸入介面 (不使用 Form) ---
+# --- 2. 輸入區塊 (不使用 Form 以免 Enter 誤觸) ---
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
 
@@ -51,21 +51,19 @@ with c2: time_v = st.time_input("時間", now.time())
 
 context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
 
-st.divider()
+# 使用獨立輸入框
+s_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
+d_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
+p_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
 
-# 直接放置輸入框，不再受 Form 限制
-s_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="請輸入高壓")
-d_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="請輸入低壓")
-p_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="請輸入心跳")
+st.write("")
 
-st.write("") # 留白
-
-# 獨立的儲存按鈕
-if st.button("📝 儲存紀錄"):
+# 只有點擊這個按鈕才會執行 GitHub 同步
+if st.button("📝 點擊此處儲存紀錄"):
     if s_val is None or d_val is None or p_val is None:
-        st.error("⚠️ 請填寫完整的血壓與心跳數值再儲存！")
+        st.error("⚠️ 請填寫完整數值再儲存！")
     else:
-        with st.spinner('同步中...'):
+        with st.spinner('同步至 GitHub 中...'):
             content, sha = get_gh()
             if content is not None:
                 new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
@@ -74,8 +72,6 @@ if st.button("📝 儲存紀錄"):
                     st.success("✅ 儲存成功！")
                     time.sleep(1)
                     st.rerun()
-                else:
-                    st.error("儲存失敗，請檢查網路或 GitHub 設定。")
 
 # --- 3. 管理與預覽 ---
 with st.expander("🗑️ 紀錄管理"):
