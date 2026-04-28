@@ -10,24 +10,36 @@ from io import StringIO
 # 1. 網頁配置
 st.set_page_config(page_title="Wynter 健康助手", layout="centered")
 
-# 2. 局部視覺優化：僅針對表格 (stDataFrame) 縮小字體
+# 2. 視覺優化：統一按鈕大小與顏色，縮小表格字體
 st.markdown("""
     <style>
-    /* 恢復標題與一般文字的大小 */
     .main-title { font-size: 24px !important; font-weight: bold; margin-bottom: 15px; }
     
-    /* 讓按鈕保持原本的大小與高度 */
+    /* 統一按鈕樣式：改小尺寸、換色 */
     .stButton>button { 
-        width: 100%; height: 3.5em; font-size: 18px !important; font-weight: bold; 
-        background-color: #28a745 !important; color: white !important; border-radius: 12px;
+        width: auto !important; /* 取消寬度 100% */
+        min-width: 150px; /* 設定最小寬度 */
+        height: 2.8em !important; 
+        font-size: 15px !important; 
+        font-weight: 500 !important; 
+        background-color: #5a7d9a !important; /* 藍灰色調 */
+        color: white !important; 
+        border-radius: 8px;
+        border: none;
+        padding: 0px 20px !important;
+    }
+    
+    /* 滑鼠懸停效果 */
+    .stButton>button:hover {
+        background-color: #4a667d !important;
+        color: #e0e0e0 !important;
     }
 
-    /* 【關鍵修改】僅縮小明細表格內的文字 */
+    /* 紀錄明細表格字體縮小 */
     [data-testid="stDataFrame"] { 
         font-size: 12px !important; 
     }
     
-    /* 稍微縮小表格行高，讓內容更緊湊 */
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
         padding: 2px 5px !important;
     }
@@ -61,7 +73,7 @@ def up_gh(txt, sha, msg):
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# 4. 輸入介面 (保持原本比例)
+# 4. 輸入介面
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
 
@@ -77,7 +89,8 @@ with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=Non
 with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
 with v3: p_val = st.number_input("心跳", min_value=0, max_value=200, value=None, placeholder="70")
 
-if st.button("🚀 確定儲存紀錄"):
+# 儲存按鈕 (改為靠左或置中，不再強行撐滿)
+if st.button("📝 儲存健康紀錄"):
     if s_val is None or d_val is None or p_val is None:
         st.error("⚠️ 請填寫完整數值！")
     else:
@@ -89,7 +102,7 @@ if st.button("🚀 確定儲存紀錄"):
             else:
                 full_txt = content.strip() + "\n" + new_line
             if up_gh(full_txt, sha, "Add entry"):
-                st.success("✅ 儲存成功！")
+                st.success("✅ 儲存成功")
                 time.sleep(1)
                 st.rerun()
 
@@ -114,7 +127,7 @@ try:
         chart_data = chart_data.set_index('時間點')
         st.line_chart(chart_data[['高壓', '低壓', '心跳']])
 
-        # 緊湊型明細表格
+        # 明細表格
         st.subheader("📊 紀錄明細")
         df_display = df.tail(15).copy()
         df_display['顯示日期'] = df_display['日期格式'].dt.strftime('%m-%d')
@@ -140,14 +153,4 @@ try:
 except Exception as e:
     st.warning("🔄 資料同步中...")
 
-# 6. 刪除管理
-with st.expander("🗑️ 管理選項"):
-    if st.button("刪除最後一筆紀錄"):
-        c, s = get_gh()
-        if c:
-            lines = [l for l in c.split('\n') if l.strip()]
-            if len(lines) > 1:
-                if up_gh('\n'.join(lines[:-1]), s, "Delete Last Entry"):
-                    st.success("已刪除")
-                    time.sleep(1)
-                    st.rerun()
+#
