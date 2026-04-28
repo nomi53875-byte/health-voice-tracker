@@ -14,7 +14,6 @@ st.set_page_config(page_title="Wynter 健康助手", layout="centered")
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; margin-bottom: 15px; }
-    
     .stButton>button { 
         min-width: 150px; 
         height: 2.8em !important; 
@@ -27,19 +26,12 @@ st.markdown("""
         padding: 0px 20px !important;
         margin-top: 10px;
     }
-    
     .stButton>button:hover {
         background-color: #4a667d !important;
         color: #e0e0e0 !important;
     }
-
-    [data-testid="stDataFrame"] { 
-        font-size: 12px !important; 
-    }
-    
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
-        padding: 2px 5px !important;
-    }
+    [data-testid="stDataFrame"] { font-size: 12px !important; }
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 2px 5px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,7 +50,7 @@ def get_gh():
         r = requests.get(url, headers=headers)
         if r.status_code == 200:
             res = r.json()
-            return base64.decodebytes(res['content'].encode('utf-8')).decode('utf-8'), res['sha']
+            return base64.b64decode(res['content']).decode('utf-8'), res['sha']
     except:
         pass
     return None, None
@@ -84,4 +76,57 @@ st.divider()
 v1, v2, v3 = st.columns(3)
 with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=None, placeholder="120")
 with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
-with v3: p_val = st.number_input("心跳
+with v3: p_val = st.number_input("心跳", min_value=0, max_value=200, value=None, placeholder="70")
+
+if st.button("📝 儲存健康紀錄"):
+    if s_val is None or d_val is None or p_val is None:
+        st.error("⚠️ 請填寫完整數值！")
+    else:
+        with st.spinner('同步中...'):
+            content, sha = get_gh()
+            new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
+            if content is None or "日期" not in content:
+                full_txt = CSV_HEADER + "\n" + new_line
+            else:
+                full_txt = content.strip() + "\n" + new_line
+            if up_gh(full_txt, sha, "Add entry"):
+                st.success("✅ 儲存成功")
+                time.sleep(1)
+                st.rerun()
+
+st.divider()
+
+# 5. 數據分析與圖表區
+try:
+    data_str, _ = get_gh()
+    if data_str and len(data_str.strip().split('\n')) > 1:
+        df = pd.read_csv(StringIO(data_str.strip()), on_bad_lines='skip')
+        df = df.iloc[:, :6]
+        df.columns = ["日期", "時間", "高壓", "低壓", "心跳", "情境"]
+        for col in ["高壓", "低壓", "心跳"]:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df['日期格式'] = pd.to_datetime(df['日期'])
+        df = df.dropna(subset=["高壓"]).sort_values(by=['日期格式', '時間'])
+
+        # 情境篩選
+        all_contexts = ["全部顯示"] + sorted(df['情境'].unique().tolist())
+        selected_context = st.selectbox("🔍 篩選顯示情境", all_contexts)
+
+        if selected_context == "全部顯示":
+            filtered_df = df
+        else:
+            filtered_df = df[df['情境'] == selected_context]
+
+        # 圖表
+        st.subheader(f"📈 趨勢分析 ({selected_context})")
+        if not filtered_df.empty:
+            chart_data = filtered_df.copy()
+            chart_data['時間點'] = chart_data['日期格式'].dt.strftime('%m/%d') + " " + chart_data['時間']
+            chart_data = chart_data.set_index('時間點')
+            st.line_chart(chart_data[['高壓', '低壓', '心跳']])
+        else:
+            st.info("尚無該情境的數據。")
+
+        # 明細表格
+        st.subheader("📊 紀錄明細")
+        df_display =
