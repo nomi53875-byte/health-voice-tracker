@@ -21,7 +21,6 @@ st.markdown("""
         color: white !important; 
         border-radius: 12px;
     }
-    div[data-testid="stMarkdownContainer"] p { font-size: 14px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -84,49 +83,48 @@ st.divider()
 try:
     csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={time.time()}"
     df = pd.read_csv(csv_url)
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-    df['日期'] = pd.to_datetime(df['日期'])
     
-    # 畫圖用的數據處理
-    df_chart = df.copy()
-    df_chart = df_chart.sort_values('日期')
-    # 建立一個合併日期與時間的欄位，讓圖表軸更精確
-    df_chart['時間點'] = df_chart['日期'].dt.strftime('%m/%d') + " " + df_chart['時間']
-    df_chart = df_chart.set_index('時間點')
+    # 清理：移除空行與非法資料
+    df = df.dropna(subset=['日期', '時間', '高壓', '低壓', '心跳'])
+    
+    if len(df) > 0:
+        # 轉換日期格式
+        df['日期格式'] = pd.to_datetime(df['日期'])
+        df = df.sort_values(by=['日期格式', '時間'])
 
-    # 顯示圖表
-    st.subheader("📈 血壓趨勢分析 (最近 30 筆)")
-    chart_data = df_chart[['高壓', '低壓', '心跳']].tail(30)
-    st.line_chart(chart_data)
+        # 準備圖表數據
+        # 建立一個座標軸標籤：月/日 時:分
+        df['時間點'] = df['日期格式'].dt.strftime('%m/%d') + " " + df['時間'].astype(str)
+        
+        # 提取圖表專用 DataFrame
+        chart_df = df[['時間點', '高壓', '低壓', '心跳']].copy()
+        chart_df = chart_df.set_index('時間點')
 
-    # 顯示表格
-    st.write("📊 最近紀錄明細")
-    df['顯示日期'] = df['日期'].dt.strftime('%m-%d')
-    cfg = {
-        "顯示日期": st.column_config.TextColumn("日期", width=60),
-        "時間": st.column_config.TextColumn("時間", width=60),
-        "高壓": st.column_config.NumberColumn("高壓", width=50),
-        "低壓": st.column_config.NumberColumn("低壓", width=50),
-        "心跳": st.column_config.NumberColumn("心跳", width=50),
-        "情境": st.column_config.TextColumn("情境", width=60)
-    }
-    
-    display_df = df.tail(10).iloc[::-1] # 顯示最近 10 筆
-    styled = display_df.style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
-                             .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
-    
-    st.dataframe(styled, hide_index=True, column_config=cfg)
+        st.subheader("📈 血壓趨勢圖")
+        st.line_chart(chart_df)
+
+        # 顯示最近資料明細
+        st.write("📊 最近 10 筆紀錄")
+        df_display = df.tail(10).copy()
+        df_display['日期'] = df_display['日期格式'].dt.strftime('%Y-%m-%d')
+        
+        cfg = {
+            "日期": st.column_config.TextColumn("日期", width=90),
+            "時間": st.column_config.TextColumn("時間", width=60),
+            "高壓": st.column_config.NumberColumn("高壓", width=50),
+            "低壓": st.column_config.NumberColumn("低壓", width=50),
+            "心跳": st.column_config.NumberColumn("心跳", width=50),
+            "情境": st.column_config.TextColumn("情境", width=60)
+        }
+        
+        # 倒序顯示，最新的在上面
+        styled = df_display.iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
+                                           .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
+        
+        st.dataframe(styled, hide_index=True, column_config=cfg)
+    else:
+        st.info("目前 CSV 檔案內尚無數據，請先儲存第一筆紀錄。")
 
 except Exception as e:
-    st.info("尚無足夠數據產生圖表。")
-
-with st.expander("🗑️ 管理"):
-    if st.button("刪除最後一筆"):
-        c, s = get_gh()
-        if c:
-            lines = [l for l in c.split('\n') if l.strip()]
-            if len(lines) > 1:
-                if up_gh('\n'.join(lines[:-1]), s, "Del"):
-                    st.warning("已刪除")
-                    time.sleep(1)
-                    st.rerun()
+    st.warning(f"圖表載入中或發生錯誤。請確認資料格式是否正確。")
+    # st.write(e) # 除錯用，若圖表還是不出來可以把這行註解拿掉看報錯內容
