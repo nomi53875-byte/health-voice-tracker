@@ -10,10 +10,12 @@ from io import StringIO
 # 1. 網頁配置
 st.set_page_config(page_title="Wynter 健康助手", layout="centered")
 
-# 2. 視覺優化
+# 2. 視覺優化：包含按鈕樣式、表格縮放、圖表鎖定
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; margin-bottom: 15px; }
+    
+    /* 統一按鈕樣式：小尺寸、藍灰色 */
     .stButton>button { 
         min-width: 150px; 
         height: 2.8em !important; 
@@ -26,9 +28,25 @@ st.markdown("""
         padding: 0px 20px !important;
         margin-top: 10px;
     }
-    .stButton>button:hover { background-color: #4a667d !important; color: #e0e0e0 !important; }
-    [data-testid="stDataFrame"] { font-size: 12px !important; }
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 2px 5px !important; }
+    
+    .stButton>button:hover {
+        background-color: #4a667d !important;
+        color: #e0e0e0 !important;
+    }
+
+    /* 紀錄明細表格字體縮小 */
+    [data-testid="stDataFrame"] { 
+        font-size: 12px !important; 
+    }
+    
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
+        padding: 2px 5px !important;
+    }
+
+    /* 鎖定圖表，防止手機滑動時被意外拖拽 */
+    [data-testid="stVegaLiteChart"] {
+        touch-action: pan-y !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -62,12 +80,14 @@ def up_gh(txt, sha, msg):
 # 4. 資料輸入區
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
+
 c1, c2, c3 = st.columns([1.5, 1.2, 1.2])
 with c1: date_v = st.date_input("日期", now.date())
 with c2: time_v = st.time_input("時間", now.time())
 with c3: context = st.selectbox("錄入情境", ["日常", "起床", "下班", "睡前", "飯後", "運動後"])
 
 st.divider()
+
 v1, v2, v3 = st.columns(3)
 with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=None, placeholder="120")
 with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
@@ -80,6 +100,7 @@ if st.button("📝 儲存健康紀錄"):
         with st.spinner('同步中...'):
             content, sha = get_gh()
             new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
+            # 確保檔案內容存在，若無則初始化
             full_txt = (content.strip() if content else CSV_HEADER) + "\n" + new_line
             if up_gh(full_txt, sha, "Add entry"):
                 st.success("✅ 儲存成功")
@@ -88,10 +109,11 @@ if st.button("📝 儲存健康紀錄"):
 
 st.divider()
 
-# 5. 數據分析與圖表區
+# 5. 數據分析與圖表區 (含情境篩選)
 try:
     data_str, _ = get_gh()
     if data_str and len(data_str.strip().split('\n')) > 1:
+        # 讀取資料並清理
         df = pd.read_csv(StringIO(data_str.strip()), on_bad_lines='skip')
         df = df.iloc[:, :6]
         df.columns = ["日期", "時間", "高壓", "低壓", "心跳", "情境"]
@@ -100,10 +122,12 @@ try:
         df['日期格式'] = pd.to_datetime(df['日期'])
         df = df.dropna(subset=["高壓"]).sort_values(by=['日期格式', '時間'])
 
+        # 情境篩選
         all_contexts = ["全部顯示"] + sorted(df['情境'].unique().tolist())
         selected_context = st.selectbox("🔍 篩選顯示情境", all_contexts)
         filtered_df = df if selected_context == "全部顯示" else df[df['情境'] == selected_context]
 
+        # 圖表
         st.subheader(f"📈 趨勢分析 ({selected_context})")
         if not filtered_df.empty:
             chart_data = filtered_df.copy()
@@ -113,6 +137,7 @@ try:
         else:
             st.info("尚無該情境的數據。")
 
+        # 明細表格
         st.subheader("📊 紀錄明細")
         df_display = filtered_df.tail(20).copy()
         df_display['顯示日期'] = df_display['日期格式'].dt.strftime('%m-%d')
@@ -129,17 +154,18 @@ try:
                                .map(lambda v: 'color: red; font-weight: bold' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
         st.dataframe(styled, hide_index=True, column_config=cfg, use_container_width=True)
 
+        # 6. 刪除最後一筆 (緊接著在表格下方)
         st.write("")
         if st.button("🗑️ 刪除最後一筆"):
             with st.spinner('執行中...'):
                 c, s = get_gh()
-                if c and len(c.split('\n')) > 1:
+                if c and len(c.strip().split('\n')) > 1:
                     new_txt = '\n'.join(c.strip().split('\n')[:-1])
-                    if up_gh(new_txt, s, "Delete last"):
-                        st.success("已刪除")
+                    if up_gh(new_txt, s, "Delete Last"):
+                        st.success("已成功刪除")
                         time.sleep(1)
                         st.rerun()
     else:
-        st.info("尚無數據。")
+        st.info("尚無歷史數據。")
 except Exception as e:
-    st.warning("🔄 資料更新中...")
+    st.warning("🔄 資料同步中...")
