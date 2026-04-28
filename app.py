@@ -30,7 +30,7 @@ def save_to_github(new_data_row):
     
     r = requests.get(url, headers=headers)
     if r.status_code != 200:
-        st.error("讀取資料檔失敗，請確認 GitHub 倉庫中已建立 data.csv 檔案。")
+        st.error("讀取資料檔失敗，請確認 GitHub 端的 data.csv 標題是否正確。")
         return False
     
     content = r.json()
@@ -59,7 +59,7 @@ with st.form("health_form", clear_on_submit=True):
     with c1: date_val = st.date_input("日期", now.date())
     with c2: time_val = st.time_input("時間", now.time())
     
-    # 依照要求：將「情境」移至時間與收縮壓之間
+    # 調整後順序：情境，「一般」已改為「日常」
     context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
     
     st.divider()
@@ -73,7 +73,7 @@ with st.form("health_form", clear_on_submit=True):
         dia_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80)
         pul_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70)
     
-    notes = st.text_input("備註", placeholder="感覺...")
+    # 已取消備註欄位
     
     submit_button = st.form_submit_button(label="📝 儲存紀錄")
 
@@ -82,24 +82,20 @@ if submit_button:
     f_dia = dia_val if dia_val is not None else 80
     f_pul = pul_val if pul_val is not None else 70
     
-    new_row = [str(date_val), time_val.strftime("%H:%M"), f_sys, f_dia, f_pul, context, notes]
+    # 準備 6 個欄位的資料 (日期, 時間, 高壓, 低壓, 心跳, 情境)
+    new_row = [str(date_val), time_val.strftime("%H:%M"), f_sys, f_dia, f_pul, context]
     
     if save_to_github(new_row):
         st.success(f"✅ 已存入 GitHub！({f_sys}/{f_dia})")
         st.balloons()
-        # 強制重新導向以更新下方表格內容
         st.rerun()
 
 # --- 4. 歷史紀錄預覽 ---
 st.divider()
 st.write("📊 歷史紀錄 (最後 5 筆)")
 try:
-    # 加上隨機參數避免 GitHub Raw 的快取延遲
     csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?t={datetime.now().timestamp()}"
     df = pd.read_csv(csv_url)
-    if not df.empty:
-        st.dataframe(df.tail(5), use_container_width=True)
-    else:
-        st.write("檔案內尚無資料。")
-except Exception as e:
-    st.info("尚未讀取到資料。請確認 GitHub 倉庫中的 data.csv 是否已正確建立標題行。")
+    st.dataframe(df.tail(5), use_container_width=True)
+except:
+    st.info("尚無資料預覽。")
