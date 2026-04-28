@@ -21,14 +21,15 @@ st.markdown("""
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 1. GitHub 核心函數 ---
+# --- 1. GitHub 核心參數 ---
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
 CSV_HEADER = "日期,時間,高壓,低壓,心跳,情境"
 
 def get_gh():
-    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
+    # 強制加入隨機參數，繞過 GitHub API 的快取
+    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?nocache={time.time()}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     r = requests.get(url, headers=headers)
     if r.status_code == 200:
@@ -63,51 +64,55 @@ if st.button("🚀 確定儲存紀錄"):
     if s_val is None or d_val is None or p_val is None:
         st.error("⚠️ 請填寫完整數值！")
     else:
-        with st.spinner('同步中...'):
+        with st.spinner('同步至 GitHub...'):
             content, sha = get_gh()
-            # 如果 CSV 不存在或完全沒內容，初始化它
+            # 確保檔案內容存在，若無則初始化
             if content is None or len(content.strip()) == 0:
-                content = CSV_HEADER
+                full_txt = CSV_HEADER + "\n" + f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
+            else:
+                full_txt = content.strip() + "\n" + f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
             
-            new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
-            updated = content.strip() + "\n" + new_line
-            if up_gh(updated, sha, "Add record"):
+            if up_gh(full_txt, sha, "Add data"):
                 st.success("✅ 儲存成功！")
-                time.sleep(1)
+                time.sleep(2) # 稍微增加延遲，確保 GitHub 更新完成
                 st.rerun()
 
 st.divider()
 
-# --- 3. 數據分析與圖表區 ---
+# --- 3. 強力讀取與顯示區 ---
 try:
-    csv_raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={time.time()}"
-    # 讀取時強制指定欄位名稱，防止 CSV 標題錯誤導致無法繪圖
-    df = pd.read_csv(csv_raw_url)
+    # 這裡不使用 raw.githubusercontent.com (快取極久)
+    # 改用 API 直接讀取內容，保證資料最即時
+    data_str, _ = get_gh()
     
-    if len(df) > 0:
-        # 統一欄位名稱（防呆處理）
+    if data_str and len(data_str.split('\n')) > 1:
+        # 將字串轉成 DataFrame
+        from io import StringIO
+        df = pd.read_csv(StringIO(data_str))
+        
+        # 強制修復可能出現的標題問題
         df.columns = ["日期", "時間", "高壓", "低壓", "心跳", "情境"]
         df = df.dropna(subset=['高壓', '低壓', '心跳'])
-        
-        # 日期處理
+
+        # 數據轉換
         df['日期格式'] = pd.to_datetime(df['日期'])
         df = df.sort_values(by=['日期格式', '時間'])
 
-        # 圖表顯示
+        # 趨勢圖
         st.subheader("📈 趨勢分析")
-        chart_df = df[['日期格式', '高壓', '低壓', '心跳']].copy()
-        # 建立時間軸標籤
-        df['時間點'] = df['日期格式'].dt.strftime('%m/%d') + " " + df['時間']
-        chart_df.index = df['時間點']
+        chart_df = df.copy()
+        chart_df['時間點'] = chart_df['日期格式'].dt.strftime('%m/%d') + " " + chart_df['時間']
+        chart_df = chart_df.set_index('時間點')
         st.line_chart(chart_df[['高壓', '低壓', '心跳']])
 
-        # 明細顯示
-        st.write("📊 最近紀錄")
+        # 歷史清單
+        st.write("📊 最近 10 筆紀錄")
         df_display = df.tail(10).copy()
-        df_display['日期'] = df_display['日期格式'].dt.strftime('%Y-%m-%d')
+        df_display['日期顯示'] = df_display['日期格式'].dt.strftime('%Y-%m-%d')
         
+        # 欄位設定
         cfg = {
-            "日期": st.column_config.TextColumn("日期", width=90),
+            "日期顯示": st.column_config.TextColumn("日期", width=90),
             "時間": st.column_config.TextColumn("時間", width=60),
             "高壓": st.column_config.NumberColumn("高壓", width=50),
             "低壓": st.column_config.NumberColumn("低壓", width=50),
@@ -115,15 +120,17 @@ try:
             "情境": st.column_config.TextColumn("情境", width=60)
         }
         
-        styled = df_display.iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
-                                           .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
+        # 排除多餘欄位並顯色
+        final_df = df_display[['日期顯示', '時間', '高壓', '低壓', '心跳', '情境']].iloc[::-1]
+        styled = final_df.style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
+                               .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
         
         st.dataframe(styled, hide_index=True, column_config=cfg)
     else:
-        st.info("尚未偵測到數據。")
+        st.info("📊 目前無歷史數據，請輸入第一筆資料。")
 
 except Exception as e:
-    st.info("正在等待第一筆有效數據產生圖表...")
+    st.info("🔄 資料同步中，請稍候...")
 
 with st.expander("🗑️ 管理"):
     if st.button("刪除最後一筆"):
