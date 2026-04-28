@@ -6,13 +6,12 @@ from datetime import datetime, timedelta
 import pytz
 import time
 
-# --- 基礎設定 ---
 st.set_page_config(page_title="Wynter 健康紀錄助手", layout="centered")
 
+# --- CSS 視覺優化 ---
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    /* 儲存按鈕樣式 */
     .stButton>button { 
         width: 100%; 
         height: 3.5em; 
@@ -21,16 +20,15 @@ st.markdown("""
         background-color: #28a745 !important; 
         color: white !important; 
         border-radius: 12px;
-        border: none;
     }
-    [data-testid="stDataFrame"] { max-width: fit-content !important; }
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { text-align: center !important; }
+    /* 讓數字輸入框的標籤變小一點，適合並排 */
+    div[data-testid="stMarkdownContainer"] p { font-size: 14px; }
     </style>
     """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 1. GitHub 參數 ---
+# --- 1. GitHub 核心函數 ---
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
@@ -51,33 +49,30 @@ def up_gh(txt, sha, msg):
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# --- 2. 輸入區塊：使用 Form 來支援 Enter 跳格 ---
+# --- 2. 輸入介面 ---
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
 
-# 這個 Form 裡面沒有儲存按鈕，所以按 Enter 只是純粹的表單內跳轉
-with st.form("input_form"):
-    c1, c2 = st.columns(2)
-    with c1: date_v = st.date_input("日期", now.date())
-    with c2: time_v = st.time_input("時間", now.time())
-    
-    context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
-    
-    st.divider()
-    
-    # 輸入框
-    s_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
-    d_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
-    p_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
-    
-    # Form 必須有一個按鈕，我們放一個隱形的或沒功能的，或者乾脆用它來「確認輸入」
-    submitted = st.form_submit_button("檢查輸入內容 (或按 Enter 跳下一格)")
+# 日期時間並排
+c1, c2, c3 = st.columns([1.5, 1.2, 1.2])
+with c1: date_v = st.date_input("日期", now.date())
+with c2: time_v = st.time_input("時間", now.time())
+with c3: context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
 
-# --- 3. 儲存按鈕：放在 Form 外面 ---
+st.divider()
+
+# 💡 核心改動：高壓、低壓、心跳橫向並排
+# 這樣你只需要在同一個水平線上點擊，手感會接近「跳格」
+v1, v2, v3 = st.columns(3)
+with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=None, placeholder="120")
+with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
+with v3: p_val = st.number_input("心跳", min_value=0, max_value=200, value=None, placeholder="70")
+
 st.write("") 
-if st.button("🚀 確定儲存紀錄至 GitHub"):
+
+if st.button("🚀 確定儲存紀錄"):
     if s_val is None or d_val is None or p_val is None:
-        st.error("⚠️ 請填寫完整數值再儲存！")
+        st.error("⚠️ 請填寫完整數值！")
     else:
         with st.spinner('同步中...'):
             content, sha = get_gh()
@@ -89,7 +84,31 @@ if st.button("🚀 確定儲存紀錄至 GitHub"):
                     time.sleep(1)
                     st.rerun()
 
-# --- 4. 管理與預覽 ---
+# --- 3. 預覽 ---
+st.divider()
+try:
+    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={time.time()}"
+    df = pd.read_csv(csv_url)
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%m-%d') # 日期顯示簡短一點
+
+    cfg = {
+        "日期": st.column_config.TextColumn("日期", width=60),
+        "時間": st.column_config.TextColumn("時間", width=60),
+        "高壓": st.column_config.NumberColumn("高壓", width=50),
+        "低壓": st.column_config.NumberColumn("低壓", width=50),
+        "心跳": st.column_config.NumberColumn("心跳", width=50),
+        "情境": st.column_config.TextColumn("情境", width=60)
+    }
+
+    st.write("📊 最近紀錄 (紅字異常)")
+    styled = df.tail(5).iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
+                                        .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
+    
+    st.dataframe(styled, hide_index=True, use_container_width=False, column_config=cfg)
+except:
+    st.info("尚無資料預覽。")
+
 with st.expander("🗑️ 紀錄管理"):
     if st.button("確認刪除最後一筆"):
         content, sha = get_gh()
@@ -101,28 +120,3 @@ with st.expander("🗑️ 紀錄管理"):
                     st.warning("最後一筆已刪除")
                     time.sleep(1)
                     st.rerun()
-
-st.divider()
-
-try:
-    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={time.time()}"
-    df = pd.read_csv(csv_url)
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-    df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d')
-
-    cfg = {
-        "日期": st.column_config.TextColumn("日期", width=95),
-        "時間": st.column_config.TextColumn("時間", width=65),
-        "高壓": st.column_config.NumberColumn("高壓", width=50),
-        "低壓": st.column_config.NumberColumn("低壓", width=50),
-        "心跳": st.column_config.NumberColumn("心跳", width=50),
-        "情境": st.column_config.TextColumn("情境", width=65)
-    }
-
-    st.write("📊 最近 5 筆紀錄")
-    styled = df.tail(5).iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
-                                        .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
-    
-    st.dataframe(styled, hide_index=True, use_container_width=False, column_config=cfg)
-except:
-    st.info("尚無資料預覽。")
