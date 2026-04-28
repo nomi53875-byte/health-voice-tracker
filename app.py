@@ -15,21 +15,20 @@ st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; margin-bottom: 15px; }
     
-    /* 統一按鈕樣式：改小尺寸、換色 */
+    /* 統一按鈕樣式 */
     .stButton>button { 
-        width: auto !important; /* 取消寬度 100% */
-        min-width: 150px; /* 設定最小寬度 */
+        min-width: 150px; 
         height: 2.8em !important; 
         font-size: 15px !important; 
         font-weight: 500 !important; 
-        background-color: #5a7d9a !important; /* 藍灰色調 */
+        background-color: #5a7d9a !important; 
         color: white !important; 
         border-radius: 8px;
         border: none;
         padding: 0px 20px !important;
+        margin-top: 10px;
     }
     
-    /* 滑鼠懸停效果 */
     .stButton>button:hover {
         background-color: #4a667d !important;
         color: #e0e0e0 !important;
@@ -73,7 +72,7 @@ def up_gh(txt, sha, msg):
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# 4. 輸入介面
+# 4. 資料輸入區
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
 
@@ -89,7 +88,7 @@ with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=Non
 with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
 with v3: p_val = st.number_input("心跳", min_value=0, max_value=200, value=None, placeholder="70")
 
-# 儲存按鈕 (改為靠左或置中，不再強行撐滿)
+# 儲存按鈕
 if st.button("📝 儲存健康紀錄"):
     if s_val is None or d_val is None or p_val is None:
         st.error("⚠️ 請填寫完整數值！")
@@ -120,7 +119,7 @@ try:
         df['日期格式'] = pd.to_datetime(df['日期'])
         df = df.dropna(subset=["高壓"]).sort_values(by=['日期格式', '時間'])
 
-        # 圖表顯示
+        # 圖表
         st.subheader("📈 血壓趨勢分析")
         chart_data = df.copy()
         chart_data['時間點'] = chart_data['日期格式'].dt.strftime('%m/%d') + " " + chart_data['時間']
@@ -147,10 +146,20 @@ try:
         
         st.dataframe(styled, hide_index=True, column_config=cfg, use_container_width=True)
 
+        # 6. 刪除按鈕 (放在明細表格下方，不再隱藏)
+        st.write("")
+        if st.button("🗑️ 刪除最後一筆"):
+            with st.spinner('執行刪除中...'):
+                c, s = get_gh()
+                if c:
+                    lines = [l for l in c.split('\n') if l.strip()]
+                    if len(lines) > 1:
+                        if up_gh('\n'.join(lines[:-1]), s, "Delete Last Entry"):
+                            st.success("已成功刪除最後一筆")
+                            time.sleep(1)
+                            st.rerun()
     else:
         st.info("尚無足夠數據。")
 
 except Exception as e:
     st.warning("🔄 資料同步中...")
-
-#
