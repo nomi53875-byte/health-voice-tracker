@@ -25,8 +25,8 @@ GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
 
-# --- 2. 核心讀寫函數 ---
-def get_github_file():
+# --- 2. 核心函數 ---
+def get_gh():
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     r = requests.get(url, headers=headers)
@@ -35,77 +35,69 @@ def get_github_file():
         return base64.b64decode(res['content']).decode('utf-8'), res['sha']
     return None, None
 
-def update_github_file(new_content, sha, message):
+def up_gh(txt, sha, msg):
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    payload = {
-        "message": message,
-        "content": base64.b64encode(new_content.encode('utf-8')).decode('utf-8'),
-        "sha": sha
-    }
+    payload = {"message": msg, "content": base64.b64encode(txt.encode('utf-8')).decode('utf-8'), "sha": sha}
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
 # --- 3. 輸入介面 ---
-# 使用 session_state 來確保模式切換時數值穩定
-manual_mode = st.toggle("切換輸入模式 (手動清空/預設數值)", value=True)
+# 恢復成最單純的模式切換
+manual_mode = st.toggle("手動輸入模式 (開啟則清空數值)", value=True)
 
 with st.form("health_form", clear_on_submit=True):
     tz = pytz.timezone('Asia/Taipei')
     now = datetime.now(tz)
-    
     c1, c2 = st.columns(2)
-    with c1: date_val = st.date_input("日期", now.date())
-    with c2: time_val = st.time_input("時間", now.time())
-    
+    with c1: date_v = st.date_input("日期", now.date())
+    with c2: time_v = st.time_input("時間", now.time())
     context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
     st.divider()
     
-    # 重新定義輸入框，並給予明確且唯一的變數名稱
     if manual_mode:
-        val_sys = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
-        val_dia = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
-        val_pul = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
+        # 手動模式：顯示 placeholder，預設為空 (None)
+        s = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
+        d = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
+        p = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
     else:
-        val_sys = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120)
-        val_dia = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80)
-        val_pul = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70)
+        # 預設模式：直接給數值
+        s = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120)
+        d = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80)
+        p = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70)
     
     if st.form_submit_button("📝 儲存紀錄"):
-        # 核心修正：直接提取上面定義的 val_sys, val_dia, val_pul
-        final_s = val_sys if val_sys is not None else 0
-        final_d = val_dia if val_dia is not None else 0
-        final_p = val_pul if val_pul is not None else 0
+        # 抓取數值，若為 None 則給予 0 (避免 CSV 報錯)
+        fs = s if s is not None else 0
+        fd = d if d is not None else 0
+        fp = p if p is not None else 0
         
-        # 檢查是否為 0 (代表使用者手動模式下沒填)
-        if manual_mode and (final_s == 0 or final_d == 0 or final_p == 0):
-            st.error("請填寫完整的血壓與心跳數值")
-        else:
-            content, sha = get_github_file()
-            if content is not None:
-                # 按照 CSV 順序組合：日期,時間,高壓,低壓,心跳,情境
-                new_line = f"{date_val},{time_val.strftime('%H:%M')},{final_s},{final_d},{final_p},{context}"
-                updated_content = content.strip() + "\n" + new_line
-                if update_github_file(updated_content, sha, "Log health data"):
-                    st.success("✅ 儲存成功！")
-                    st.rerun()
+        content, sha = get_gh()
+        if content is not None:
+            # 依照順序組合：日期,時間,高壓,低壓,心跳,情境
+            new_line = f"{date_v},{time_v.strftime('%H:%M')},{fs},{fd},{fp},{context}"
+            updated = content.strip() + "\n" + new_line
+            if up_gh(updated, sha, "Log data"):
+                st.success("✅ 已存入 GitHub！")
+                st.rerun()
 
-# --- 4. 管理與顯示 ---
+# --- 4. 管理與預覽 ---
 with st.expander("🗑️ 紀錄管理"):
     if st.button("確認刪除最後一筆"):
-        content, sha = get_github_file()
+        content, sha = get_gh()
         if content:
             lines = [l for l in content.split('\n') if l.strip()]
             if len(lines) > 1:
-                new_content = '\n'.join(lines[:-1])
-                if update_github_file(new_content, sha, "Delete entry"):
-                    st.warning("已刪除最後一筆")
+                updated = '\n'.join(lines[:-1])
+                if up_gh(updated, sha, "Delete"):
+                    st.warning("已刪除")
                     st.rerun()
 
 st.divider()
 
 try:
-    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?cache={datetime.now().timestamp()}"
+    # 讀取 CSV
+    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?c={datetime.now().timestamp()}"
     df = pd.read_csv(csv_url)
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d')
@@ -120,16 +112,17 @@ try:
     }
 
     st.write("📊 最近 5 筆紀錄")
-    styled_df = df.tail(5).iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
-                                           .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
+    # 紅字警示樣式
+    styled = df.tail(5).iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
+                                        .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
     
-    st.dataframe(styled_df, hide_index=True, use_container_width=False, column_config=cfg)
-
+    st.dataframe(styled, hide_index=True, use_container_width=False, column_config=cfg)
+    
     if st.button("🔍 讀取六個月內完整紀錄"):
-        cut_off = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
-        f_df = df[df['日期'] >= cut_off].iloc[::-1]
+        cut = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+        f_df = df[df['日期'] >= cut].iloc[::-1]
         st.dataframe(f_df.style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
-                              .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓']), 
+                               .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓']), 
                      hide_index=True, use_container_width=False, column_config=cfg)
 except:
-    st.info("尚未讀取到資料。")
+    st.info("尚無資料預覽。")
