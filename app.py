@@ -26,10 +26,7 @@ st.markdown("""
         padding: 0px 20px !important;
         margin-top: 10px;
     }
-    .stButton>button:hover {
-        background-color: #4a667d !important;
-        color: #e0e0e0 !important;
-    }
+    .stButton>button:hover { background-color: #4a667d !important; color: #e0e0e0 !important; }
     [data-testid="stDataFrame"] { font-size: 12px !important; }
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 2px 5px !important; }
     </style>
@@ -65,14 +62,12 @@ def up_gh(txt, sha, msg):
 # 4. 資料輸入區
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
-
 c1, c2, c3 = st.columns([1.5, 1.2, 1.2])
 with c1: date_v = st.date_input("日期", now.date())
 with c2: time_v = st.time_input("時間", now.time())
 with c3: context = st.selectbox("錄入情境", ["日常", "起床", "下班", "睡前", "飯後", "運動後"])
 
 st.divider()
-
 v1, v2, v3 = st.columns(3)
 with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=None, placeholder="120")
 with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
@@ -85,10 +80,7 @@ if st.button("📝 儲存健康紀錄"):
         with st.spinner('同步中...'):
             content, sha = get_gh()
             new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
-            if content is None or "日期" not in content:
-                full_txt = CSV_HEADER + "\n" + new_line
-            else:
-                full_txt = content.strip() + "\n" + new_line
+            full_txt = (content.strip() if content else CSV_HEADER) + "\n" + new_line
             if up_gh(full_txt, sha, "Add entry"):
                 st.success("✅ 儲存成功")
                 time.sleep(1)
@@ -108,16 +100,10 @@ try:
         df['日期格式'] = pd.to_datetime(df['日期'])
         df = df.dropna(subset=["高壓"]).sort_values(by=['日期格式', '時間'])
 
-        # 情境篩選
         all_contexts = ["全部顯示"] + sorted(df['情境'].unique().tolist())
         selected_context = st.selectbox("🔍 篩選顯示情境", all_contexts)
+        filtered_df = df if selected_context == "全部顯示" else df[df['情境'] == selected_context]
 
-        if selected_context == "全部顯示":
-            filtered_df = df
-        else:
-            filtered_df = df[df['情境'] == selected_context]
-
-        # 圖表
         st.subheader(f"📈 趨勢分析 ({selected_context})")
         if not filtered_df.empty:
             chart_data = filtered_df.copy()
@@ -127,6 +113,33 @@ try:
         else:
             st.info("尚無該情境的數據。")
 
-        # 明細表格
         st.subheader("📊 紀錄明細")
-        df_display =
+        df_display = filtered_df.tail(20).copy()
+        df_display['顯示日期'] = df_display['日期格式'].dt.strftime('%m-%d')
+        cfg = {
+            "顯示日期": st.column_config.TextColumn("日期", width=60),
+            "時間": st.column_config.TextColumn("時間", width=60),
+            "高壓": st.column_config.NumberColumn("高壓", width=50),
+            "低壓": st.column_config.NumberColumn("低壓", width=50),
+            "心跳": st.column_config.NumberColumn("心跳", width=50),
+            "情境": st.column_config.TextColumn("情境", width=60)
+        }
+        final_df = df_display[['顯示日期', '時間', '高壓', '低壓', '心跳', '情境']].iloc[::-1]
+        styled = final_df.style.map(lambda v: 'color: red; font-weight: bold' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
+                               .map(lambda v: 'color: red; font-weight: bold' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
+        st.dataframe(styled, hide_index=True, column_config=cfg, use_container_width=True)
+
+        st.write("")
+        if st.button("🗑️ 刪除最後一筆"):
+            with st.spinner('執行中...'):
+                c, s = get_gh()
+                if c and len(c.split('\n')) > 1:
+                    new_txt = '\n'.join(c.strip().split('\n')[:-1])
+                    if up_gh(new_txt, s, "Delete last"):
+                        st.success("已刪除")
+                        time.sleep(1)
+                        st.rerun()
+    else:
+        st.info("尚無數據。")
+except Exception as e:
+    st.warning("🔄 資料更新中...")
