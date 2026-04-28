@@ -13,6 +13,8 @@ st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
     .stButton>button { width: 100%; height: 3.2em; font-size: 16px; }
+    /* 強制表格容器不要撐太開 */
+    .stDataFrame { max-width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -24,8 +26,9 @@ REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
 
 # --- 2. 核心功能函數 ---
-def get_github_data():
-    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
+def get_github_data_fresh():
+    # 加入時間戳記強制抓取 GitHub 最新的檔案資訊，避免刪除失敗
+    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={datetime.now().timestamp()}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     r = requests.get(url, headers=headers)
     if r.status_code == 200:
@@ -77,24 +80,27 @@ if submit_button:
     f_dia = dia_val if dia_val is not None else 80
     f_pul = pul_val if pul_val is not None else 70
     new_row = [str(date_val), time_val.strftime("%H:%M"), f_sys, f_dia, f_pul, context]
-    old_content, sha = get_github_data()
+    old_content, sha = get_github_data_fresh()
     if old_content:
         new_content = old_content.strip() + "\n" + ",".join(map(str, new_row))
         if update_github_file(new_content, sha, "Add entry"):
             st.success("✅ 已存入！")
             st.rerun()
 
-# 刪除最後一筆功能
 with st.expander("🗑️ 紀錄管理"):
-    if st.button("撤銷/刪除最後一筆紀錄"):
-        old_content, sha = get_github_data()
+    st.write("警告：此操作將永久刪除最後一筆紀錄。")
+    if st.button("確認刪除最後一筆資料"):
+        # 刪除時一定要強制獲取最新內容
+        old_content, sha = get_github_data_fresh()
         if old_content:
             lines = old_content.strip().split('\n')
-            if len(lines) > 1: # 確保不刪到標題
+            if len(lines) > 1:
                 new_content = '\n'.join(lines[:-1])
-                if update_github_file(new_content, sha, "Delete last entry"):
-                    st.warning("已刪除最後一筆資料！")
+                if update_github_file(new_content, sha, "Manual delete"):
+                    st.warning("最後一筆資料已刪除！")
                     st.rerun()
+            else:
+                st.error("目前只有標題行，無資料可刪。")
 
 # --- 4. 歷史紀錄預覽 ---
 st.divider()
@@ -104,25 +110,30 @@ try:
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d')
     
-    # 設定欄位寬度配置，讓日期不要太長
+    # 💡 關鍵：手動設定像素寬度 (width=數字)
     col_cfg = {
-        "日期": st.column_config.TextColumn("日期", width="small"),
-        "時間": st.column_config.TextColumn("時間", width="small"),
-        "高壓": st.column_config.NumberColumn("高壓", width="x-small"),
-        "低壓": st.column_config.NumberColumn("低壓", width="x-small"),
-        "心跳": st.column_config.NumberColumn("心跳", width="x-small"),
-        "情境": st.column_config.TextColumn("情境", width="small")
+        "日期": st.column_config.TextColumn("日期", width=95),
+        "時間": st.column_config.TextColumn("時間", width=65),
+        "高壓": st.column_config.NumberColumn("高壓", width=55),
+        "低壓": st.column_config.NumberColumn("低壓", width=55),
+        "心跳": st.column_config.NumberColumn("心跳", width=55),
+        "情境": st.column_config.TextColumn("情境", width=65)
     }
 
     st.write("📊 最近 5 筆紀錄")
-    st.dataframe(apply_style(df.tail(5).iloc[::-1]), hide_index=True, use_container_width=True, column_config=col_cfg)
+    st.dataframe(
+        apply_style(df.tail(5).iloc[::-1]), 
+        hide_index=True, 
+        use_container_width=False, # 設為 False 才能讓表格緊湊
+        column_config=col_cfg
+    )
     
     if st.button("🔍 讀取六個月內完整紀錄"):
         st.write("📋 六個月內完整資料")
         six_months_ago = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
         full_df = df[df['日期'] >= six_months_ago].iloc[::-1]
-        st.dataframe(apply_style(full_df), hide_index=True, use_container_width=True, column_config=col_cfg)
+        st.dataframe(apply_style(full_df), hide_index=True, use_container_width=False, column_config=col_cfg)
         csv_data = full_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 下載此表為 CSV", csv_data, "health_history.csv", "text/csv")
+        st.download_button("📥 下載此表為 CSV", csv_data, "history.csv", "text/csv")
 except:
     st.info("尚無資料預覽。")
