@@ -47,8 +47,9 @@ def update_github_file(new_content, sha, message):
     return res.status_code == 200
 
 # --- 3. 輸入介面 ---
-manual_mode = st.toggle("切換輸入模式 (手動/預設)", value=True)
+manual_mode = st.toggle("切換輸入模式 (手動清空/預設數值)", value=True)
 
+# 使用 clear_on_submit=True 讓存完後框框自動清空
 with st.form("health_form", clear_on_submit=True):
     tz = pytz.timezone('Asia/Taipei')
     now = datetime.now(tz)
@@ -60,24 +61,28 @@ with st.form("health_form", clear_on_submit=True):
     context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
     st.divider()
     
-    # 簡化輸入框邏輯
+    # 修正：手動模式使用 None，這會讓框框顯示 Placeholder 而不是 0
     if manual_mode:
-        sys = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=0)
-        dia = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=0)
-        pul = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=0)
+        sys_in = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
+        dia_in = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
+        pul_in = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
     else:
-        sys = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120)
-        dia = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80)
-        pul = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70)
+        sys_in = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=120)
+        dia_in = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=80)
+        pul_in = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=70)
     
     if st.form_submit_button("📝 儲存紀錄"):
+        # 抓取當前輸入框的值，如果沒填則給予預設值防呆
+        final_sys = sys_in if sys_in is not None else 120
+        final_dia = dia_in if dia_in is not None else 80
+        final_pul = pul_in if pul_in is not None else 70
+        
         content, sha = get_github_file()
         if content is not None:
-            # 直接組合新資料，不進行阻擋判斷
-            new_row = f"{date_val},{time_val.strftime('%H:%M')},{sys},{dia},{pul},{context}"
+            new_row = f"{date_val},{time_val.strftime('%H:%M')},{final_sys},{final_dia},{final_pul},{context}"
             updated_content = content.strip() + "\n" + new_row
-            if update_github_file(updated_content, sha, "Add entry"):
-                st.success("✅ 已存入！")
+            if update_github_file(updated_content, sha, "Add health record"):
+                st.success("✅ 已存入 GitHub！")
                 st.rerun()
 
 # --- 4. 管理與顯示 ---
@@ -88,14 +93,14 @@ with st.expander("🗑️ 紀錄管理"):
             lines = [l for l in content.split('\n') if l.strip()]
             if len(lines) > 1:
                 new_content = '\n'.join(lines[:-1])
-                if update_github_file(new_content, sha, "Delete last"):
-                    st.warning("已刪除最後一筆")
+                if update_github_file(new_content, sha, "Delete last entry"):
+                    st.warning("最後一筆已刪除")
                     st.rerun()
 
 st.divider()
 
 try:
-    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?cache={now.timestamp()}"
+    csv_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}?cache={datetime.now().timestamp()}"
     df = pd.read_csv(csv_url)
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d')
@@ -110,7 +115,7 @@ try:
     }
 
     st.write("📊 最近 5 筆紀錄")
-    # 套用簡單紅字邏輯
+    # 紅字警示
     styled_df = df.tail(5).iloc[::-1].style.map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 140 else '', subset=['高壓'])\
                                            .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓'])
     
@@ -123,4 +128,4 @@ try:
                               .map(lambda v: 'color: red' if isinstance(v, (int, float)) and v >= 90 else '', subset=['低壓']), 
                      hide_index=True, use_container_width=False, column_config=cfg)
 except:
-    st.info("尚無資料預覽。")
+    st.info("尚未讀取到資料預覽。")
