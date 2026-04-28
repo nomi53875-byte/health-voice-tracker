@@ -60,7 +60,7 @@ with st.form("health_form", clear_on_submit=True):
     with c2: time_val = st.time_input("時間", now.time())
     
     # 依照要求：將「情境」移至時間與收縮壓之間
-    context = st.selectbox("情境", ["一般", "起床", "下班", "睡前", "飯後"])
+    context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
     
     st.divider()
     
