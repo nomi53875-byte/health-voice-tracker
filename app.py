@@ -12,7 +12,17 @@ st.set_page_config(page_title="Wynter 健康紀錄助手", layout="centered")
 st.markdown("""
     <style>
     .main-title { font-size: 22px !important; font-weight: bold; margin-bottom: 10px; }
-    .stButton>button { width: 100%; height: 3.2em; font-size: 18px; font-weight: bold; background-color: #4CAF50; color: white; }
+    /* 儲存按鈕樣式 */
+    .stButton>button { 
+        width: 100%; 
+        height: 3.5em; 
+        font-size: 18px !important; 
+        font-weight: bold; 
+        background-color: #28a745 !important; 
+        color: white !important; 
+        border-radius: 12px;
+        border: none;
+    }
     [data-testid="stDataFrame"] { max-width: fit-content !important; }
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { text-align: center !important; }
     </style>
@@ -20,7 +30,7 @@ st.markdown("""
 
 st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
 
-# --- 1. GitHub Secrets ---
+# --- 1. GitHub 參數 ---
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = st.secrets["REPO_NAME"]
 FILE_PATH = "data.csv"
@@ -41,29 +51,35 @@ def up_gh(txt, sha, msg):
     res = requests.put(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# --- 2. 輸入區塊 (不使用 Form 以免 Enter 誤觸) ---
+# --- 2. 輸入區塊：使用 Form 來支援 Enter 跳格 ---
 tz = pytz.timezone('Asia/Taipei')
 now = datetime.now(tz)
 
-c1, c2 = st.columns(2)
-with c1: date_v = st.date_input("日期", now.date())
-with c2: time_v = st.time_input("時間", now.time())
+# 這個 Form 裡面沒有儲存按鈕，所以按 Enter 只是純粹的表單內跳轉
+with st.form("input_form"):
+    c1, c2 = st.columns(2)
+    with c1: date_v = st.date_input("日期", now.date())
+    with c2: time_v = st.time_input("時間", now.time())
+    
+    context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
+    
+    st.divider()
+    
+    # 輸入框
+    s_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
+    d_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
+    p_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
+    
+    # Form 必須有一個按鈕，我們放一個隱形的或沒功能的，或者乾脆用它來「確認輸入」
+    submitted = st.form_submit_button("檢查輸入內容 (或按 Enter 跳下一格)")
 
-context = st.selectbox("情境", ["日常", "起床", "下班", "睡前", "飯後"])
-
-# 使用獨立輸入框
-s_val = st.number_input("收縮壓 (高壓)", min_value=0, max_value=250, value=None, placeholder="120")
-d_val = st.number_input("舒張壓 (低壓)", min_value=0, max_value=150, value=None, placeholder="80")
-p_val = st.number_input("心跳 (Pulse)", min_value=0, max_value=200, value=None, placeholder="70")
-
-st.write("")
-
-# 只有點擊這個按鈕才會執行 GitHub 同步
-if st.button("📝 點擊此處儲存紀錄"):
+# --- 3. 儲存按鈕：放在 Form 外面 ---
+st.write("") 
+if st.button("🚀 確定儲存紀錄至 GitHub"):
     if s_val is None or d_val is None or p_val is None:
         st.error("⚠️ 請填寫完整數值再儲存！")
     else:
-        with st.spinner('同步至 GitHub 中...'):
+        with st.spinner('同步中...'):
             content, sha = get_gh()
             if content is not None:
                 new_line = f"{date_v},{time_v.strftime('%H:%M')},{s_val},{d_val},{p_val},{context}"
@@ -73,7 +89,7 @@ if st.button("📝 點擊此處儲存紀錄"):
                     time.sleep(1)
                     st.rerun()
 
-# --- 3. 管理與預覽 ---
+# --- 4. 管理與預覽 ---
 with st.expander("🗑️ 紀錄管理"):
     if st.button("確認刪除最後一筆"):
         content, sha = get_gh()
