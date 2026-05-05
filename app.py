@@ -84,7 +84,7 @@ now = datetime.now(tz)
 c1, c2, c3 = st.columns([1.5, 1.2, 1.2])
 with c1: date_v = st.date_input("日期", now.date())
 with c2: time_v = st.time_input("時間", now.time())
-with c3: context = st.selectbox("錄入情境", ["日常", "起床", "下班", "睡前", "飯後", "運動後"])
+with c3: context = st.selectbox("錄入情境", ["日常", "起床", "下班", "睡前", "飯後", "運動"])
 
 st.divider()
 
@@ -93,7 +93,7 @@ with v1: s_val = st.number_input("高壓", min_value=0, max_value=250, value=Non
 with v2: d_val = st.number_input("低壓", min_value=0, max_value=150, value=None, placeholder="80")
 with v3: p_val = st.number_input("心跳", min_value=0, max_value=200, value=None, placeholder="70")
 
-if st.button("📝 儲存健康紀錄"):
+if st.button("📝 儲存紀錄"):
     if s_val is None or d_val is None or p_val is None:
         st.error("⚠️ 請填寫完整數值！")
     else:
