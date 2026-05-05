@@ -93,12 +93,12 @@ try:
         # 控制區
         filter_col1, filter_col2 = st.columns([1, 1])
         with filter_col1:
-            all_contexts = ["全部顯示"] + sorted(df['情境'].unique().tolist())
+            all_contexts = ["全部"] + sorted(df['情境'].unique().tolist())
             selected_context = st.selectbox("🔍 篩選情境", all_contexts)
         with filter_col2:
             show_n = st.slider("明細顯示筆數", 10, 200, 30, 10)
 
-        filtered_df = df if selected_context == "全部顯示" else df[df['情境'] == selected_context]
+        filtered_df = df if selected_context == "全部" else df[df['情境'] == selected_context]
 
         # --- 進化版圖表邏輯 ---
         st.subheader(f"📈 健康趨勢分析 ({selected_context})")
