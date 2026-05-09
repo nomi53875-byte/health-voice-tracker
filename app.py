@@ -26,7 +26,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-title">❤️ 血壓健康紀錄助手</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">❤️ 血壓紀錄助手</p>', unsafe_allow_html=True)
 
 # 3. GitHub 核心函數 (保持不變)
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
